@@ -9,13 +9,15 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	"nanomsg.org/go/mangos/v3"
+	"nanomsg.org/go/mangos/v3/protocol/pair"
 	"nanomsg.org/go/mangos/v3/protocol/rep"
 	"nanomsg.org/go/mangos/v3/protocol/req"
+	_ "nanomsg.org/go/mangos/v3/transport/inproc"
 	_ "nanomsg.org/go/mangos/v3/transport/tcp"
 )
 
 // Request/reply pattern
-func TestMangosV2ReqRep(t *testing.T) {
+func TestMangosV3ReqRep(t *testing.T) {
 	const (
 		listen = "tcp://127.0.0.1:40899"
 	)
@@ -41,7 +43,7 @@ func TestMangosV2ReqRep(t *testing.T) {
 			for {
 				b, err = sock.Recv()
 				if err != nil {
-					t.Fatal(err)
+					return
 				}
 				msg := &Message{}
 				if err = json.Unmarshal(b, msg); err != nil {
@@ -56,7 +58,7 @@ func TestMangosV2ReqRep(t *testing.T) {
 					time.Sleep(msg.Duration)
 				}
 				if err = sock.Send(b); err != nil {
-					t.Fatal(err)
+					return
 				}
 			}
 		}()
@@ -158,6 +160,91 @@ func TestMangosV2ReqRep(t *testing.T) {
 	rg.Go(func() error { return run(1) })
 	rg.Go(func() error { return run(2) })
 	if err = rg.Wait(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// pair pattern test
+func TestMangosV3Pair(t *testing.T) {
+	const (
+		step2addr = "inproc://step2"
+		step3addr = "inproc://step3"
+	)
+
+	notify := func(addr string) (err error) {
+		var (
+			sock mangos.Socket
+		)
+		if sock, err = pair.NewSocket(); err != nil {
+			return
+		}
+		defer sock.Close()
+		if err = sock.Dial(addr); err != nil {
+			return
+		}
+		err = sock.Send([]byte("ready"))
+		return
+	}
+
+	bind := func(addr string) (sock mangos.Socket, err error) {
+		if sock, err = pair.NewSocket(); err != nil {
+			return
+		}
+		err = sock.Listen(addr)
+		return
+	}
+
+	wait := func(sock mangos.Socket) (err error) {
+		var (
+			b []byte
+		)
+		if b, err = sock.Recv(); err != nil {
+			return
+		}
+		if "ready" != string(b) {
+			err = fmt.Errorf("Not ready")
+		}
+		return
+	}
+
+	g := errgroup.Group{}
+	step1 := func() (err error) {
+		t.Log("enter step 1")
+		t.Log("step 1 is ready")
+		err = notify(step2addr)
+		return
+	}
+
+	step2 := func() (err error) {
+		t.Log("enter step2")
+		sock, err := bind(step2addr)
+		if err != nil {
+			return
+		}
+		g.Go(step1)
+		if err = wait(sock); err != nil {
+			return err
+		}
+		t.Log("step2 is ready")
+		err = notify(step3addr)
+		return
+	}
+
+	step3 := func() (err error) {
+		t.Log("enter step3")
+		sock, err := bind(step3addr)
+		if err != nil {
+			return
+		}
+		g.Go(step2)
+		if err = wait(sock); err != nil {
+			return
+		}
+		t.Log("step3 is ready")
+		return
+	}
+	g.Go(step3)
+	if err := g.Wait(); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -8,5 +8,7 @@ github.com/smartystreets/goconvey v0.0.0-20181108003508-044398e4856c/go.mod h1:X
 golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6 h1:bjcUS9ztw9kFmmIxJInhon/0Is3p+EHBKNgquIzo1OI=
 golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+nanomsg.org/go-mangos v1.4.0 h1:pVRLnzXePdSbhWlWdSncYszTagERhMG5zK/vXYmbEdM=
+nanomsg.org/go-mangos v1.4.0/go.mod h1:MOor8xUIgwsRMPpLr9xQxe7bT7rciibScOqVyztNxHQ=
 nanomsg.org/go/mangos/v3 v3.0.0-alpha h1:fFcdaPK/KQMJXOzl13Fl7jop/AFVmssX8IqomnLDw1E=
 nanomsg.org/go/mangos/v3 v3.0.0-alpha/go.mod h1:zRQyBSGC9qQQymAxeOMKj5zhrsb7QXQgJpNHED4EM7k=
