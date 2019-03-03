@@ -170,23 +170,20 @@ func TestMangosV3Pair(t *testing.T) {
 		step2addr = "inproc://step2"
 		step3addr = "inproc://step3"
 	)
-
-	notify := func(addr string) (err error) {
-		var (
-			sock mangos.Socket
-		)
+	closes := make(chan func() error, 10)
+	dial := func(addr string) (sock mangos.Socket, err error) {
 		if sock, err = pair.NewSocket(); err != nil {
 			return
 		}
-		defer sock.Close()
-		if err = sock.Dial(addr); err != nil {
-			return
-		}
+		err = sock.Dial(addr)
+		return
+	}
+	notify := func(sock mangos.Socket) (err error) {
 		err = sock.Send([]byte("ready"))
 		return
 	}
 
-	bind := func(addr string) (sock mangos.Socket, err error) {
+	listen := func(addr string) (sock mangos.Socket, err error) {
 		if sock, err = pair.NewSocket(); err != nil {
 			return
 		}
@@ -207,32 +204,45 @@ func TestMangosV3Pair(t *testing.T) {
 		return
 	}
 
+	shutdown := func(sock mangos.Socket) (err error) {
+		closes <- sock.Close
+		return nil
+	}
+
 	g := errgroup.Group{}
 	step1 := func() (err error) {
 		t.Log("enter step 1")
 		t.Log("step 1 is ready")
-		err = notify(step2addr)
+		sock, err := dial(step2addr)
+		defer shutdown(sock)
+		err = notify(sock)
 		return
 	}
 
 	step2 := func() (err error) {
 		t.Log("enter step2")
-		sock, err := bind(step2addr)
+		sock, err := listen(step2addr)
 		if err != nil {
 			return
 		}
+		defer shutdown(sock)
 		g.Go(step1)
 		if err = wait(sock); err != nil {
 			return err
 		}
 		t.Log("step2 is ready")
-		err = notify(step3addr)
+		sock, err = dial(step3addr)
+		if err != nil {
+			return
+		}
+		err = notify(sock)
+		defer shutdown(sock)
 		return
 	}
 
 	step3 := func() (err error) {
 		t.Log("enter step3")
-		sock, err := bind(step3addr)
+		sock, err := listen(step3addr)
 		if err != nil {
 			return
 		}
@@ -246,5 +256,8 @@ func TestMangosV3Pair(t *testing.T) {
 	g.Go(step3)
 	if err := g.Wait(); err != nil {
 		t.Fatal(err)
+	}
+	for len(closes) > 0 {
+		(<-closes)()
 	}
 }
