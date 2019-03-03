@@ -2,6 +2,8 @@ package drilling
 
 import (
 	"fmt"
+	"math/rand"
+	"reflect"
 	"testing"
 	"time"
 
@@ -10,8 +12,10 @@ import (
 	"golang.org/x/sync/errgroup"
 	"nanomsg.org/go/mangos/v3"
 	"nanomsg.org/go/mangos/v3/protocol/pair"
+	"nanomsg.org/go/mangos/v3/protocol/pub"
 	"nanomsg.org/go/mangos/v3/protocol/rep"
 	"nanomsg.org/go/mangos/v3/protocol/req"
+	"nanomsg.org/go/mangos/v3/protocol/sub"
 	_ "nanomsg.org/go/mangos/v3/transport/inproc"
 	_ "nanomsg.org/go/mangos/v3/transport/tcp"
 )
@@ -259,5 +263,118 @@ func TestMangosV3Pair(t *testing.T) {
 	}
 	for len(closes) > 0 {
 		(<-closes)()
+	}
+}
+
+// One-way data distribution:
+// http://zguide.zeromq.org/page:all#Getting-the-Message-Out
+func TestMangosV3WeatherUpdates(t *testing.T) {
+	const (
+		addr = "tcp://127.0.0.1:9999"
+	)
+
+	rand.Seed(time.Now().UnixNano())
+
+	type WheatherUpdateMessage struct {
+		Zipcode     int `json:"zipcode"`
+		Temperature int `json:"temperature"`
+		Humidity    int `json:"humidity"`
+	}
+
+	newMessage := func() (m *WheatherUpdateMessage) {
+		m = &WheatherUpdateMessage{
+			Zipcode:     (rand.Intn(10)+1)*100000 + rand.Intn(10000),
+			Temperature: rand.Intn(130) - 80,
+			Humidity:    rand.Intn(80) + 10,
+		}
+		return
+	}
+
+	bind := func() (sock mangos.Socket, err error) {
+		if sock, err = pub.NewSocket(); err != nil {
+			return
+		}
+		err = sock.Listen(addr)
+		return
+	}
+
+	publish := func(sock mangos.Socket) (err error) {
+		msg := newMessage()
+		b, err := json.Marshal(msg)
+		if err != nil {
+			return
+		}
+		err = sock.Send(b)
+		return
+	}
+
+	dial := func() (sock mangos.Socket, err error) {
+		if sock, err = sub.NewSocket(); err != nil {
+			return
+		}
+		if err = sock.Dial(addr); err != nil {
+			return
+		}
+		sock.SetOption(mangos.OptionSubscribe, []byte(""))
+		return
+	}
+
+	recv := func(sock mangos.Socket) (msg *WheatherUpdateMessage, err error) {
+		var b []byte
+		if b, err = sock.Recv(); err != nil {
+			return
+		}
+		msg = &WheatherUpdateMessage{}
+		err = json.Unmarshal(b, msg)
+		return
+	}
+
+	msgs := make(chan *WheatherUpdateMessage, 1000)
+	ready := make(chan bool, 1000)
+	subscribe := func() (err error) {
+		sock, err := dial()
+		if err != nil {
+			return
+		}
+		ready <- true
+		msg, err := recv(sock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		msgs <- msg
+		return
+	}
+	// start publisher
+	publisher, err := bind()
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := errgroup.Group{}
+	// start subscriber 1
+	g.Go(subscribe)
+	// start subscriber 2
+	g.Go(subscribe)
+	// start subscriber 3
+	g.Go(subscribe)
+	// wait subscribe ready
+	for i := 0; i < 3; i++ {
+		<-ready
+	}
+	if err := publish(publisher); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(msgs) != 3 {
+		t.Fatal(len(msgs))
+	}
+	// check result
+	msg1 := <-msgs
+	msg2 := <-msgs
+	msg3 := <-msgs
+	if !reflect.DeepEqual(msg1, msg2) || !reflect.DeepEqual(msg1, msg3) {
+		t.Fatal(msg1, msg2, msg3)
 	}
 }
