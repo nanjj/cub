@@ -13,6 +13,8 @@ import (
 	"nanomsg.org/go/mangos/v3"
 	"nanomsg.org/go/mangos/v3/protocol/pair"
 	"nanomsg.org/go/mangos/v3/protocol/pub"
+	"nanomsg.org/go/mangos/v3/protocol/pull"
+	"nanomsg.org/go/mangos/v3/protocol/push"
 	"nanomsg.org/go/mangos/v3/protocol/rep"
 	"nanomsg.org/go/mangos/v3/protocol/req"
 	"nanomsg.org/go/mangos/v3/protocol/sub"
@@ -175,7 +177,7 @@ func TestMangosV3Pair(t *testing.T) {
 		step3addr = "inproc://step3"
 	)
 	closes := make(chan func() error, 10)
-	dial := func(addr string) (sock mangos.Socket, err error) {
+	connect := func(addr string) (sock mangos.Socket, err error) {
 		if sock, err = pair.NewSocket(); err != nil {
 			return
 		}
@@ -217,7 +219,7 @@ func TestMangosV3Pair(t *testing.T) {
 	step1 := func() (err error) {
 		t.Log("enter step 1")
 		t.Log("step 1 is ready")
-		sock, err := dial(step2addr)
+		sock, err := connect(step2addr)
 		defer shutdown(sock)
 		err = notify(sock)
 		return
@@ -235,7 +237,7 @@ func TestMangosV3Pair(t *testing.T) {
 			return err
 		}
 		t.Log("step2 is ready")
-		sock, err = dial(step3addr)
+		sock, err = connect(step3addr)
 		if err != nil {
 			return
 		}
@@ -308,7 +310,7 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 		return
 	}
 
-	dial := func() (sock mangos.Socket, err error) {
+	connect := func() (sock mangos.Socket, err error) {
 		if sock, err = sub.NewSocket(); err != nil {
 			return
 		}
@@ -332,7 +334,7 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 	msgs := make(chan *WheatherUpdateMessage, 1000)
 	ready := make(chan bool, 1000)
 	subscribe := func() (err error) {
-		sock, err := dial()
+		sock, err := connect()
 		if err != nil {
 			return
 		}
@@ -376,5 +378,261 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 	msg3 := <-msgs
 	if !reflect.DeepEqual(msg1, msg2) || !reflect.DeepEqual(msg1, msg3) {
 		t.Fatal(msg1, msg2, msg3)
+	}
+}
+
+// Divide and conquer:
+// http://zguide.zeromq.org/page:all#Divide-and-Conquer
+//
+// if you running it under macos, you may hit the maxfiles limit,
+// change it as below:
+//
+// 1. create file =/Library/LaunchDaemons/limit.maxfiles.plist= with
+//    below content:
+//    #+begin_src xml
+//      <?xml version="1.0" encoding="UTF-8"?> 
+//      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" 
+//       "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+//      <plist version="1.0"> 
+//       <dict>
+//       <key>Label</key>
+//       <string>limit.maxfiles</string>
+//       <key>ProgramArguments</key>
+//       <array>
+//       <string>launchctl</string>
+//       <string>limit</string>
+//       <string>maxfiles</string>
+//       <string>64000</string>
+//       <string>524288</string>
+//       </array>
+//       <key>RunAtLoad</key>
+//       <true/>
+//       <key>ServiceIPC</key>
+//       <false/>
+//       </dict>
+//      </plist>
+//    #+end_src
+// 2. =sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist=
+//
+func TestMangosV3DivideAndConquer(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	defer Do()
+	const (
+		senderAddr = "tcp://127.0.0.1:55557"
+		sinkerAddr = "tcp://127.0.0.1:55558"
+		maxWorkers = 100
+	)
+	type Task struct {
+		Id       int           `json:"id"`
+		Name     string        `json:"name"`
+		Duration time.Duration `json:"duration"`
+		Worker   string        `json:"worker"`
+	}
+
+	tLogTask := func(task *Task) {
+		tLogf("%02d %s %s %v\n", task.Id, task.Name, task.Worker, task.Duration)
+	}
+
+	newSender := func() (sock mangos.Socket, err error) {
+		sock, err = push.NewSocket()
+		if err != nil {
+			tLog(err)
+			return
+		}
+		Defer(sock.Close)
+		err = sock.Listen(senderAddr)
+		if err != nil {
+			tLog(err)
+		}
+		return
+	}
+
+	send := func(sock mangos.Socket, task *Task) (err error) {
+		var (
+			b []byte
+		)
+		if b, err = json.Marshal(task); err != nil {
+			return
+		}
+		err = sock.Send(b)
+		return
+	}
+
+	recv := func(sock mangos.Socket) (task *Task, err error) {
+		var (
+			b []byte
+		)
+		if b, err = sock.Recv(); err != nil {
+			return
+		}
+		task = &Task{}
+		err = json.Unmarshal(b, task)
+		return
+	}
+
+	newSleepTask := func(id int) *Task {
+		return &Task{
+			Id:       id,
+			Name:     "sleep",
+			Duration: time.Millisecond * time.Duration(rand.Intn(10)+1),
+		}
+	}
+
+	newDoneTask := func(id int) *Task {
+		return &Task{
+			Id:   id,
+			Name: "done",
+		}
+	}
+
+	work := func(idx int) (err error) {
+		var (
+			tasks   mangos.Socket
+			results mangos.Socket
+			name    = fmt.Sprintf("worker-%02d", idx)
+		)
+		tasks, err = pull.NewSocket()
+		if err != nil {
+			tLog(name, err)
+			t.Fatal(name, err)
+			return
+		}
+		Defer(tasks.Close)
+		err = tasks.Dial(senderAddr)
+		if err != nil {
+			tLog(name, err)
+			t.Fatal(name, err)
+			return
+		}
+		results, err = push.NewSocket()
+		if err != nil {
+			tLog(name, err)
+			t.Fatal(name, err)
+			return
+		}
+		Defer(results.Close)
+		err = results.Dial(sinkerAddr)
+		if err != nil {
+			tLog(name, err)
+			t.Fatal(name, err)
+			return
+		}
+		Add()
+		for {
+			var task *Task
+			if task, err = recv(tasks); err != nil {
+				tLog(name, err)
+				t.Fatal(name, err)
+				return
+			}
+			task.Worker = name
+			done := false
+			switch task.Name {
+			case "sleep":
+				time.Sleep(task.Duration)
+			case "done":
+				done = true
+			default: // discard others
+				continue
+			}
+			if err = send(results, task); err != nil {
+				tLog(name, err)
+				t.Fatal(name, err)
+				return
+			}
+
+			if done {
+				break
+			}
+		}
+		return
+	}
+	tpool := make(chan *Task, 1024)
+	sink := func() (err error) {
+		var (
+			sock mangos.Socket
+			task *Task
+		)
+		sock, err = pull.NewSocket()
+		if err != nil {
+			return
+		}
+		Defer(sock.Close)
+		if err = sock.Listen(sinkerAddr); err != nil {
+			return
+		}
+		Add()
+		offduties := 0
+		startTime := time.Now()
+		for {
+			if task, err = recv(sock); err != nil {
+				tLog(err)
+				return
+			}
+			if task.Name == "done" {
+				offduties++
+			}
+			tpool <- task
+			if offduties == maxWorkers {
+				break
+			}
+		}
+		endTime := time.Now()
+		tLogf("Total elapsed time:%v\n", endTime.Sub(startTime))
+		return
+	}
+
+	g := errgroup.Group{}
+	// start sinker
+	g.Go(sink)
+	// wait sinker ready
+	Wait(1)
+
+	// start sender
+	sender, err := newSender()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// start workers
+	for i := 0; i < maxWorkers; i++ {
+		i := i
+		f := func() error {
+			return work(i)
+		}
+		g.Go(f)
+	}
+	// send 200 sleep tasks
+	for i := 0; i < 200; i++ {
+		task := newSleepTask(i)
+		if err = send(sender, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Wait 100 task being handled
+	for i := 0; i < 200; i++ {
+		tLogTask(<-tpool)
+	}
+
+	// send done tasks
+	for i := 0; i < maxWorkers; i++ {
+		task := newDoneTask(i)
+		if err = send(sender, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// WAIT all
+	if err = g.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	if dones := len(tpool); dones != maxWorkers {
+		t.Fatal(dones)
+	}
+
+	for i := 0; i < maxWorkers; i++ {
+		tLogTask(<-tpool)
 	}
 }
