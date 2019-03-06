@@ -10,16 +10,16 @@ import (
 	"encoding/json"
 
 	"golang.org/x/sync/errgroup"
-	"nanomsg.org/go/mangos/v3"
-	"nanomsg.org/go/mangos/v3/protocol/pair"
-	"nanomsg.org/go/mangos/v3/protocol/pub"
-	"nanomsg.org/go/mangos/v3/protocol/pull"
-	"nanomsg.org/go/mangos/v3/protocol/push"
-	"nanomsg.org/go/mangos/v3/protocol/rep"
-	"nanomsg.org/go/mangos/v3/protocol/req"
-	"nanomsg.org/go/mangos/v3/protocol/sub"
-	_ "nanomsg.org/go/mangos/v3/transport/inproc"
-	_ "nanomsg.org/go/mangos/v3/transport/tcp"
+	"nanjj.github.io/nanomsg/mangos"
+	"nanjj.github.io/nanomsg/mangos/protocol/pair"
+	"nanjj.github.io/nanomsg/mangos/protocol/pub"
+	"nanjj.github.io/nanomsg/mangos/protocol/pull"
+	"nanjj.github.io/nanomsg/mangos/protocol/push"
+	"nanjj.github.io/nanomsg/mangos/protocol/rep"
+	"nanjj.github.io/nanomsg/mangos/protocol/req"
+	"nanjj.github.io/nanomsg/mangos/protocol/sub"
+	_ "nanjj.github.io/nanomsg/mangos/transport/inproc"
+	_ "nanjj.github.io/nanomsg/mangos/transport/tcp"
 )
 
 // Request/reply pattern
@@ -390,10 +390,10 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 // 1. create file =/Library/LaunchDaemons/limit.maxfiles.plist= with
 //    below content:
 //    #+begin_src xml
-//      <?xml version="1.0" encoding="UTF-8"?> 
-//      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" 
+//      <?xml version="1.0" encoding="UTF-8"?>
+//      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
 //       "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-//      <plist version="1.0"> 
+//      <plist version="1.0">
 //       <dict>
 //       <key>Label</key>
 //       <string>limit.maxfiles</string>
