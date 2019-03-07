@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	"nanjj.github.io/nanomsg/mangos"
+	"nanjj.github.io/nanomsg/mangos/protocol/bus"
 	"nanjj.github.io/nanomsg/mangos/protocol/pair"
 	"nanjj.github.io/nanomsg/mangos/protocol/pub"
 	"nanjj.github.io/nanomsg/mangos/protocol/pull"
@@ -23,7 +24,7 @@ import (
 )
 
 // Request/reply pattern
-func TestMangosV3ReqRep(t *testing.T) {
+func TestReqRep(t *testing.T) {
 	const (
 		listen = "tcp://127.0.0.1:40899"
 	)
@@ -171,7 +172,7 @@ func TestMangosV3ReqRep(t *testing.T) {
 }
 
 // pair pattern test
-func TestMangosV3Pair(t *testing.T) {
+func TestPair(t *testing.T) {
 	const (
 		step2addr = "inproc://step2"
 		step3addr = "inproc://step3"
@@ -270,7 +271,25 @@ func TestMangosV3Pair(t *testing.T) {
 
 // One-way data distribution:
 // http://zguide.zeromq.org/page:all#Getting-the-Message-Out
-func TestMangosV3WeatherUpdates(t *testing.T) {
+// #+begin_src artist
+//
+//                           +-------------+
+//                           |    pub      |
+//         +----------------->  (listen)   <-----+
+//         |                 +-------------+     |
+//         |                     ^               |
+//         |                     |               |
+//    +----+----+       +--------+--+      +-----+----+
+//    |  sub1   |       |   sub2    |      |  sub3    |
+//    | (dial)  |       |  (dial)   |      | (dial)   |
+//    +---------+       +-----------+      +----------+
+//
+//   Note:
+//   1. pub listen and send message
+//   2. sub1  sub2, sub3 dial to pub and receive message
+// #+end_src
+//
+func TestWeatherUpdates(t *testing.T) {
 	const (
 		addr = "tcp://127.0.0.1:9999"
 	)
@@ -321,7 +340,7 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 		return
 	}
 
-	recv := func(sock mangos.Socket) (msg *WheatherUpdateMessage, err error) {
+	dial := func(sock mangos.Socket) (msg *WheatherUpdateMessage, err error) {
 		var b []byte
 		if b, err = sock.Recv(); err != nil {
 			return
@@ -339,7 +358,7 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 			return
 		}
 		ready <- true
-		msg, err := recv(sock)
+		msg, err := dial(sock)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -414,7 +433,7 @@ func TestMangosV3WeatherUpdates(t *testing.T) {
 //    #+end_src
 // 2. =sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist=
 //
-func TestMangosV3DivideAndConquer(t *testing.T) {
+func TestDivideAndConquer(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	defer Do()
 	const (
@@ -458,7 +477,7 @@ func TestMangosV3DivideAndConquer(t *testing.T) {
 		return
 	}
 
-	recv := func(sock mangos.Socket) (task *Task, err error) {
+	dial := func(sock mangos.Socket) (task *Task, err error) {
 		var (
 			b []byte
 		)
@@ -520,7 +539,7 @@ func TestMangosV3DivideAndConquer(t *testing.T) {
 		Add()
 		for {
 			var task *Task
-			if task, err = recv(tasks); err != nil {
+			if task, err = dial(tasks); err != nil {
 				tLog(name, err)
 				t.Fatal(name, err)
 				return
@@ -565,7 +584,7 @@ func TestMangosV3DivideAndConquer(t *testing.T) {
 		offduties := 0
 		startTime := time.Now()
 		for {
-			if task, err = recv(sock); err != nil {
+			if task, err = dial(sock); err != nil {
 				tLog(err)
 				return
 			}
@@ -634,5 +653,176 @@ func TestMangosV3DivideAndConquer(t *testing.T) {
 
 	for i := 0; i < maxWorkers; i++ {
 		tLogTask(<-tpool)
+	}
+}
+
+// Bus: http://250bpm.com/blog:17
+// #+begin_src artist
+//               +----------+
+//               |   p1     |
+//      +------->| (listen) +--------+
+//      |        |          |        |
+//      |        +----------+        |
+//      | dial                  dial |
+//      |                            |
+//      |                            v
+// +----+-----+                +----------+
+// |   p3     |     dial       |   p2     |
+// | (listen) |<---------------+ (listen) |
+// |          |                |          |
+// +----------+                +----------+
+// Note:
+// p1 sends message, p2, p3 should receive the message,
+// p1 should not receive the message
+// #+end_src
+func TestBusBasic(t *testing.T) {
+	type Message struct {
+		Action   string `json:"action"`
+		Sender   string `json:"sender"`
+		Receiver string `json:"receiver"`
+	}
+	var (
+		g          errgroup.Group
+		msgs       = make(chan *Message, 1024)
+		p1, p2, p3 mangos.Socket
+		err        error
+		adds       = map[string]string{
+			"p1": "tcp://127.0.0.1:55555",
+			"p2": "tcp://127.0.0.1:55556",
+			"p3": "tcp://127.0.0.1:55557",
+		}
+	)
+
+	recv := func(sock mangos.Socket, name string) (err error) {
+		var b []byte
+		for {
+			if b, err = sock.Recv(); err != nil {
+				tLog(err)
+				return
+			}
+			msg := &Message{}
+			if err = json.Unmarshal(b, msg); err != nil {
+				tLog(err)
+				return
+			}
+			if msg.Action == "quit" {
+				return
+			}
+			msg.Receiver = name
+			msgs <- msg
+		}
+	}
+
+	listen := func(name string) (sock mangos.Socket, err error) {
+		sock, err = bus.NewSocket()
+		if err != nil {
+			tLog(err)
+			return
+		}
+		addr := adds[name]
+		err = sock.Listen(addr)
+		if err != nil {
+			tLog(err)
+		}
+		g.Go(func() (err error) {
+			return recv(sock, name)
+		})
+		return
+	}
+
+	dial := func(sock mangos.Socket, name string) (err error) {
+		addr := adds[name]
+		if err = sock.Dial(addr); err != nil {
+			tLog(err)
+			return
+		}
+		return
+	}
+
+	send := func(sock mangos.Socket, sender, action string) (err error) {
+		var (
+			b []byte
+		)
+		if b, err = json.Marshal(&Message{
+			Action: action,
+			Sender: sender}); err != nil {
+			tLog(err)
+			return
+		}
+		err = sock.Send(b)
+		return
+	}
+
+	if p1, err = listen("p1"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+
+	defer p1.Close()
+	if p2, err = listen("p2"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+
+	defer p2.Close()
+	if p3, err = listen("p3"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+	defer p3.Close()
+
+	// p1 dial p2
+	if err = dial(p1, "p2"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+	// p2 dial p3
+	if err = dial(p2, "p3"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+
+	// p3 dial p1
+	if err = dial(p3, "p1"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+
+	tLog("now send message")
+	if err = send(p1, "p1", "work"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+	tLogf("now check messages received: %d\n", len(msgs))
+	msg1 := <-msgs
+	tLogf("Get message 1: %v\n", msg1)
+	msg2 := <-msgs
+	tLogf("Get message 2: %v\n", msg2)
+	if l := len(msgs); l != 0 {
+		for len(msgs) > 0 {
+			tLog(<-msgs)
+		}
+		t.Fatal(l)
+	}
+	if msg1.Sender != "p1" || msg2.Sender != "p1" ||
+		msg1.Receiver == msg2.Receiver ||
+		msg1.Receiver == "p1" || msg2.Receiver == "p1" ||
+		msg1.Action != "work" || msg2.Action != "work" {
+		tLog(msg1, msg2)
+		t.Fatal(msg1, msg2)
+	}
+	// quit p2, p3
+	if err = send(p1, "p1", "quit"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+	// quit p1
+	if err = send(p2, "p2", "quit"); err != nil {
+		tLog(err)
+		t.Fatal(err)
+	}
+	if err = g.Wait(); err != nil {
+		tLog(err)
+		t.Fatal(err)
 	}
 }
