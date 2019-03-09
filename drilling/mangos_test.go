@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,7 +19,9 @@ import (
 	"nanjj.github.io/nanomsg/mangos/protocol/push"
 	"nanjj.github.io/nanomsg/mangos/protocol/rep"
 	"nanjj.github.io/nanomsg/mangos/protocol/req"
+	"nanjj.github.io/nanomsg/mangos/protocol/respondent"
 	"nanjj.github.io/nanomsg/mangos/protocol/sub"
+	"nanjj.github.io/nanomsg/mangos/protocol/surveyor"
 	_ "nanjj.github.io/nanomsg/mangos/transport/inproc"
 	_ "nanjj.github.io/nanomsg/mangos/transport/tcp"
 )
@@ -824,5 +827,173 @@ func TestBusBasic(t *testing.T) {
 	if err = g.Wait(); err != nil {
 		tLog(err)
 		t.Fatal(err)
+	}
+}
+
+// Survey (Everybody Votes)
+//
+// The surveyor pattern is used to send a timed survey out,
+// responses are individually returned until the survey has
+// expired. This pattern is useful for service discovery
+// and voting algorithms.
+//
+// #+begin_src artist
+//
+//         +----------+
+//         |    r1    |
+//         |respondent+------------+
+//         |          |            |
+//         +----------+            |
+//                                 |
+//                             +---+-------+           +-----------+
+//                             |   sur     |           |   r3      |
+//                             | surveyor  +-----------+respondent |
+//                             |           |           |           |
+//                             +---+-------+           +-----------+
+//         +----------+            |
+//         |   r2     |            |
+//         |respondent+------------+
+//         |          |
+//         +----------+
+// #+end_src
+//
+func TestSurvey(t *testing.T) {
+	const (
+		addr = "tcp://127.0.0.1:59999"
+	)
+
+	type Message struct {
+		Action     string        `json:"action"`
+		Respondent string        `json:"respondent"`
+		Reply      string        `json:"reply"`
+		Duration   time.Duration `json:"duration"`
+	}
+
+	var (
+		replies = make(chan *Message, 1024)
+		locker  = &sync.Mutex{}
+		cond    = sync.NewCond(locker)
+	)
+
+	listen := func() (sock mangos.Socket, err error) {
+		sock, err = surveyor.NewSocket()
+		if err != nil {
+			tLog("listen", err)
+			return
+		}
+		if err = sock.Listen(addr); err != nil {
+			tLog("listen", err)
+		}
+		sock.SetOption(mangos.OptionSurveyTime, time.Millisecond*10)
+		cond.Broadcast()
+		return
+	}
+
+	dial := func() (sock mangos.Socket, err error) {
+		sock, err = respondent.NewSocket()
+		if err != nil {
+			tLog("dial", err)
+			return
+		}
+		locker.Lock()
+		cond.Wait()
+		locker.Unlock()
+		if err = sock.Dial(addr); err != nil {
+			tLog("dial", err)
+		}
+		return
+	}
+
+	ping := func(sock mangos.Socket) (err error) {
+		m := &Message{
+			Action: "ping",
+		}
+
+		b, err := json.Marshal(m)
+		if err != nil {
+			tLog("ping", err)
+			return
+		}
+		// wait a little while
+		time.Sleep(time.Millisecond)
+		startTime := time.Now()
+		if err = sock.Send(b); err != nil {
+			tLog("ping", "send", err)
+			return
+		}
+
+		for {
+			b, err = sock.Recv()
+			if err != nil {
+				tLog("ping", "recv", err)
+				return
+			}
+			m := &Message{}
+			if err = json.Unmarshal(b, m); err != nil {
+				tLog("ping", err)
+				return
+			}
+			m.Duration = time.Now().Sub(startTime)
+			replies <- m
+		}
+		return
+	}
+
+	tong := func(sock mangos.Socket, name string) (err error) {
+		b, err := sock.Recv()
+		if err != nil {
+			tLog("tong", err)
+			return
+		}
+		m := &Message{}
+		if err = json.Unmarshal(b, m); err != nil {
+			tLog("tong", err)
+			return
+		}
+		m.Respondent = name
+		if b, err = json.Marshal(m); err != nil {
+			tLog("tong", err)
+			return
+		}
+		if err = sock.Send(b); err != nil {
+			tLog("tong", err)
+			return
+		}
+		return
+	}
+	var g errgroup.Group
+	// surveyer
+	g.Go(func() (err error) {
+		sock, err := listen()
+		if err != nil {
+			tLog(err)
+			return
+		}
+		return ping(sock)
+	})
+
+	// 3 responsents
+	for i := 0; i < 3; i++ {
+		name := fmt.Sprintf("r%d", i)
+		g.Go(func() (err error) {
+			sock, err := dial()
+			if err != nil {
+				tLog(err)
+				return
+			}
+			return tong(sock, name)
+		})
+	}
+	err := g.Wait()
+	t.Log(err)
+	if len(replies) != 3 {
+		t.Fatal(len(replies))
+	}
+	for i := 0; i < 3; i++ {
+		m := <-replies
+		tLog(m)
+		if m.Duration > time.Millisecond*10 {
+			t.Fatal(m)
+		}
 	}
 }
