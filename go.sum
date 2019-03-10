@@ -22,8 +22,7 @@ github.com/smartystreets/goconvey v0.0.0-20190222223459-a17d461953aa h1:E+gaaifz
 github.com/smartystreets/goconvey v0.0.0-20190222223459-a17d461953aa/go.mod h1:2RVY1rIf+2J2o/IM9+vPq9RzmHDSseB7FoXiSNIUsoU=
 golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6 h1:bjcUS9ztw9kFmmIxJInhon/0Is3p+EHBKNgquIzo1OI=
 golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35 h1:YAFjXN64LMvktoUZH9zgY4lGc/msGN7HQfoSuKCgaDU=
 golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
-golang.org/x/sys v0.0.0-20190306071516-a98ae47d97a5 h1:x+Ampnh9f/zE3phqz3m2ExO+t8eBTGuUe8xd4GCLbng=
-golang.org/x/sys v0.0.0-20190306071516-a98ae47d97a5/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
-nanjj.github.io/nanomsg/mangos v1.0.0 h1:GBaylehWb9c79mlh1HMD/7huEWVc6iY3dkdrYoeI3kU=
-nanjj.github.io/nanomsg/mangos v1.0.0/go.mod h1:POtUKQeYCYQNlIzCtR+SppgXpGok2JqCd3Bccy/S8+Q=
+nanomsg.org/go/mangos/v2 v2.0.2 h1:xHLKOSFVVvqmXWcrtUB/4MO5hMPkjEcMQ7jUVcqVY6o=
+nanomsg.org/go/mangos/v2 v2.0.2/go.mod h1:t3xUorDTR13Yp5P6yhtaHH/99R2n7bgIjnvytu35Z9Y=
