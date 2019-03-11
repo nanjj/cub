@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"nanomsg.org/go/mangos/v2/protocol/rep"
 	"nanomsg.org/go/mangos/v2/protocol/req"
 	"nanomsg.org/go/mangos/v2/protocol/respondent"
+	"nanomsg.org/go/mangos/v2/protocol/star"
 	"nanomsg.org/go/mangos/v2/protocol/sub"
 	"nanomsg.org/go/mangos/v2/protocol/surveyor"
 	_ "nanomsg.org/go/mangos/v2/transport/inproc"
@@ -995,5 +997,148 @@ func TestSurvey(t *testing.T) {
 		if m.Duration > time.Millisecond*10 {
 			t.Fatal(m)
 		}
+	}
+}
+
+// Star
+// #+begin_src artist
+//
+//   +----------+               +----------+              +----------+
+//   |    p1    |               |    p0    |              |    p3    |
+//   |  (dial)  |<------------->|  (recv)  |<------------>|  (dial)  |
+//   |          |               |          |              |          |
+//   +----------+               +----------+              +----------+
+//                                    ^
+//                                    |
+//                                    v
+//                              +----------+
+//                              |    p2    |
+//                              |  (dial)  |
+//                              |          |
+//                              +----------+
+//
+//   Notes:
+//   1. p1 send message, p3, p2 should receive the message,
+//   2. p0 should receive the message
+// #+end_src
+//
+func TestStar(t *testing.T) {
+	const (
+		addr = "tcp://127.0.0.1:59998"
+	)
+
+	// type Message struct {
+	// 	Sender   string `json:"sender"`
+	// 	Receiver string `json:"receiver"`
+	// 	Content  string `json:"content"`
+	// }
+
+	listen := func() (sock mangos.Socket, err error) {
+		if sock, err = star.NewSocket(); err == nil {
+			err = sock.Listen(addr)
+		}
+		return
+	}
+
+	dial := func() (sock mangos.Socket, err error) {
+		if sock, err = star.NewSocket(); err == nil {
+			err = sock.Dial(addr)
+		}
+		return
+	}
+
+	p0, err := listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p0.Close()
+	p1, err := dial()
+	defer p1.Close()
+	p2, err := dial()
+	defer p2.Close()
+	p3, err := dial()
+	defer p3.Close()
+	msgs := make(chan string, 1024)
+	recv := func(sock mangos.Socket, name string) (err error) {
+		var b []byte
+		for {
+			b, err = sock.Recv()
+			if err != nil {
+				return
+			}
+			msg := string(b)
+			msg = fmt.Sprintf("%s received at %s", msg, name)
+			msgs <- msg
+			if msg == "done" {
+				return
+			}
+		}
+		return
+	}
+
+	send := func(sock mangos.Socket, msg string) (err error) {
+		if err = sock.Send([]byte(msg)); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	var g errgroup.Group
+	// p1 recv
+	g.Go(func() error {
+		return recv(p1, "p1")
+	})
+
+	// p2 recv
+	g.Go(func() error {
+		return recv(p2, "p2")
+	})
+
+	// p3 recv
+	g.Go(func() error {
+		return recv(p3, "p3")
+	})
+
+	// p0 recv
+	g.Go(func() error {
+		return recv(p0, "p0")
+	})
+
+	// p1 send hello
+	if err := send(p1, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		m := <-msgs
+		t.Log(m)
+		if strings.Contains(m, "p1") {
+			t.Fatal(m)
+		}
+	}
+	// p0 send hello
+	if err := send(p0, "hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 3; i++ {
+		m := <-msgs
+		t.Log(m)
+		if strings.Contains(m, "p0") {
+			t.Fatal(m)
+		}
+	}
+	// p0, p1 send done
+	for _, sock := range []mangos.Socket{p0, p1} {
+		if err := send(sock, "done"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 4; i++ {
+		m := <-msgs
+		t.Log(m)
+	}
+	if l := len(msgs); l > 0 {
+		t.Fatal(l)
 	}
 }
