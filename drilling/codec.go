@@ -4,11 +4,11 @@ import (
 	"time"
 )
 
-//go:generate codecgen -o codec_gen.go codec.go
+//go:generate codecgen -o cg_$GOFILE $GOFILE
 type TestingEvent struct {
-	Id        int       `json:"id"`
-	Kind      int       `json:"kind"`
-	CreatedAt time.Time `json:"created_at"`
-	Target    string    `json:"target"`
-	Source    string    `json:"source"`
+	Id        int       `codec:"id"`
+	Kind      int       `codec:"kind"`
+	CreatedAt time.Time `codec:"created_at"`
+	Target    string    `codec:"target"`
+	Source    string    `codec:"source"`
 }
