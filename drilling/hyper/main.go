@@ -5,7 +5,7 @@ import "github.com/spf13/cobra"
 var (
 	RootCmd = &cobra.Command{
 		Use:  "clerk",
-		RunE: RunClerk,
+		RunE: RunHyper,
 	}
 )
 
