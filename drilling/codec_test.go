@@ -35,16 +35,16 @@ func TestCodecJsonUsage(t *testing.T) {
 }
 
 func TestCodecCbor(t *testing.T) {
-	jsonHand := &codec.CborHandle{}
+	cborHand := &codec.CborHandle{}
 	out := make([]byte, 0, 1024)
-	enc := codec.NewEncoderBytes(&out, jsonHand)
+	enc := codec.NewEncoderBytes(&out, cborHand)
 	now := time.Now().UTC()
 	v := &TestingEvent{1, 1, now, "hyper", "scheduler"}
 	if err := enc.Encode(v); err != nil {
 		t.Fatal(err)
 	}
 	t.Log(len(out), string(out))
-	dec := codec.NewDecoderBytes(out, jsonHand)
+	dec := codec.NewDecoderBytes(out, cborHand)
 	want := &TestingEvent{}
 	if err := dec.Decode(want); err != nil {
 		t.Fatal(err)
@@ -105,4 +105,24 @@ func BenchmarkCodecJsonCbor(b *testing.B) {
 	b.Run("CodecCbor", func(b *testing.B) {
 		benchCodec(b, cborHand)
 	})
+}
+func TestCborTime(t *testing.T) {
+	cborHand := &codec.CborHandle{}
+	out := make([]byte, 0, 16)
+	enc := codec.NewEncoderBytes(&out, cborHand)
+	now := time.Now().Round(0)
+	if err := enc.Encode(&now); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(len(out))
+	dec := codec.NewDecoderBytes(out, cborHand)
+	want := time.Time{}
+	if err := dec.Decode(&want); err != nil {
+		t.Fatal(err)
+	}
+	if !want.Equal(now) {
+		t.Log(want)
+		t.Log(now)
+		t.Fatal()
+	}
 }
