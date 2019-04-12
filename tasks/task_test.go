@@ -20,3 +20,10 @@ func TestTargets(t *testing.T) {
 		t.Fatal(targets)
 	}
 }
+
+func TestArgs(t *testing.T) {
+	args := []Arg{Arg("a")}
+	if string(args[0]) != "a" {
+		t.Fatal()
+	}
+}

@@ -886,8 +886,9 @@ func TestSurvey(t *testing.T) {
 		replies = make(chan *Message, 1024)
 		locker  = &sync.Mutex{}
 		cond    = sync.NewCond(locker)
+		closes  = make(chan func() error, 1024)
 	)
-	closes := make(chan func() error, 1024)
+
 	defer func() {
 		max := len(closes)
 		for i := 0; i < max; i++ {
@@ -916,6 +917,7 @@ func TestSurvey(t *testing.T) {
 			tLog("dial", err)
 			return
 		}
+		closes <- sock.Close
 		locker.Lock()
 		cond.Wait()
 		locker.Unlock()
@@ -1003,6 +1005,7 @@ func TestSurvey(t *testing.T) {
 				tLog(err)
 				return
 			}
+			closes <- sock.Close
 			return tong(sock, name)
 		})
 	}
@@ -1158,6 +1161,7 @@ func TestStar(t *testing.T) {
 		m := <-msgs
 		t.Log(m)
 	}
+
 	if l := len(msgs); l > 0 {
 		t.Fatal(l)
 	}

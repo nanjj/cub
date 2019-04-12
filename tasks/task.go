@@ -29,12 +29,16 @@ func (targets *Targets) ToLocal() {
 	*targets = nil
 }
 
+type Handler func([]Arg) ([]Arg, error)
+
 //go:generate codecgen -o cg_$GOFILE $GOFILE
 type Task struct {
-	Targets Targets  `codec:"targets"`
-	Id      int64    `codec:"id"`
-	Name    string   `codec:"name"`
-	Args    []string `codec:"args"`
+	Targets Targets `codec:"targets"`
+	Id      int64   `codec:"id"`
+	Name    string  `codec:"name"`
+	Args    []Arg   `codec:"args"`
+	Ack     Targets `codec:"ack"`
+	Reply   string  `codec:"reply"`
 }
 
 func (task *Task) Dup() (dup *Task) {

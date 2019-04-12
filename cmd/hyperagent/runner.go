@@ -20,15 +20,13 @@ const (
 	LeaderListen = "leader.listen"
 )
 
-type Handler func([]string) error
-
 type Runner struct {
 	name     string
 	listen   string
 	leader   mangos.Socket
 	self     mangos.Socket
 	members  map[string]mangos.Socket
-	handlers map[string]Handler
+	handlers map[string]tasks.Handler
 	routes   *Routes
 }
 
@@ -37,7 +35,7 @@ func NewRunner(name, listen, leader string) (runner *Runner, err error) {
 		name:     name,
 		listen:   listen,
 		members:  map[string]mangos.Socket{},
-		handlers: map[string]Handler{},
+		handlers: map[string]tasks.Handler{},
 		routes:   &Routes{},
 	}
 	runner.AddHandler("join", runner.Join)
@@ -60,7 +58,7 @@ func NewRunner(name, listen, leader string) (runner *Runner, err error) {
 		}
 		task := &tasks.Task{
 			Name: "join",
-			Args: []string{name, listen, name},
+			Args: []tasks.Arg{tasks.Arg(name), tasks.Arg(listen), tasks.Arg(name)},
 		}
 		if err = task.Send(sock); err != nil {
 			return
@@ -99,13 +97,34 @@ func (runner *Runner) Handle() (err error) {
 	}
 	for k, v := range vias {
 		if k == "" {
-			local = true
+			if leader := runner.Leader(); leader == nil {
+				local = true
+				continue
+			} else {
+				var tgts tasks.Targets
+				for _, tgt := range v {
+					if string(tgt) != runner.Name() {
+						tgts = append(tgts, tgt)
+					} else {
+						local = true
+					}
+				}
+				if len(tgts) != 0 {
+					dup := task.Dup()
+					dup.Targets = tgts
+					if err = dup.Send(leader); err != nil {
+						log.Println(err)
+						return
+					}
+				}
+			}
 			continue
 		}
 		if member, ok := runner.members[k]; ok {
 			dup := task.Dup()
 			dup.Targets = v
 			if err = dup.Send(member); err != nil {
+				log.Println(err)
 				return
 			}
 		} else {
@@ -115,26 +134,45 @@ func (runner *Runner) Handle() (err error) {
 	if local { // handle local
 		name := task.Name
 		args := task.Args
+		var rep []tasks.Arg
 		if f, ok := runner.handlers[name]; ok {
-			if err = f(args); err != nil {
+			if rep, err = f(args); err != nil {
 				log.Println(err)
-				return
 			}
 		} else {
-			log.Println("No handler found")
+			err = fmt.Errorf("No handler found")
+			log.Println(err)
+		}
+		reply := task.Reply
+		if reply != "" && err == nil {
+			ack := tasks.Task{
+				Name:    reply,
+				Targets: task.Ack,
+				Args:    rep,
+			}
+			if err = ack.Send(runner.Leader()); err != nil {
+				log.Println(err)
+			}
 		}
 	}
 	return
 }
 
+// Ping
+func (r *Runner) Ping(args []tasks.Arg) (ack []tasks.Arg, err error) {
+	log.Println("ping", r.Name(), args)
+	return
+}
+
 // name,listen, members...
-func (runner *Runner) Join(args []string) (err error) {
+func (runner *Runner) Join(args []tasks.Arg) (ack []tasks.Arg, err error) {
 	l := len(args)
 	if l < 3 {
-		return fmt.Errorf("bad request")
+		err = fmt.Errorf("bad request")
+		return
 	}
-	name := args[0]
-	listen := args[1]
+	name := string(args[0])
+	listen := string(args[1])
 	// add new member
 	sock, ok := runner.members[name]
 	if ok && listen != "" {
@@ -153,13 +191,13 @@ func (runner *Runner) Join(args []string) (err error) {
 
 	// update routes
 	for i := 2; i < l; i++ {
-		target := args[i]
+		target := string(args[i])
 		runner.routes.Add(target, name)
 	}
 	// tell leader
 	if leader := runner.leader; leader != nil {
-		args[0] = runner.name
-		args[1] = ""
+		args[0] = tasks.Arg(runner.name)
+		args[1] = tasks.Arg("")
 		task := &tasks.Task{
 			Name: "join",
 			Args: args,
@@ -200,7 +238,7 @@ func (r *Runner) Routes() (routes map[string]string) {
 	return
 }
 
-func (r *Runner) AddHandler(name string, handler Handler) {
+func (r *Runner) AddHandler(name string, handler tasks.Handler) {
 	r.handlers[name] = handler
 }
 

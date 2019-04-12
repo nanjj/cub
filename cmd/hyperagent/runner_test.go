@@ -54,7 +54,7 @@ func TestRunnerJoin(t *testing.T) {
 	}
 	// ping r11
 	ch := make(chan time.Time, 1024)
-	ping := func(args []string) (err error) {
+	ping := func(args []tasks.Arg) (rep []tasks.Arg, err error) {
 		ch <- time.Now()
 		return
 	}
