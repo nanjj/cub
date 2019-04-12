@@ -2,6 +2,8 @@ github.com/Microsoft/go-winio v0.4.11/go.mod h1:VhR8bwka0BXejwEJY73c50VrPtXAaKcy
 github.com/Microsoft/go-winio v0.4.12 h1:xAfWHN1IrQ0NJ9TBC0KBZoqLjzDTr1ML+4MywiUOryc=
 github.com/Microsoft/go-winio v0.4.12/go.mod h1:VhR8bwka0BXejwEJY73c50VrPtXAaKcyvVC4A4RozmA=
 github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6/go.mod h1:grANhF5doyWs3UAsr3K4I6qtAmlQcZDesFNEHPZAzj8=
+github.com/avast/retry-go v2.2.0+incompatible h1:m+w7mVLWa/oKqX2xYqiEKQQkeGH8DDEXB/XnjS54Wyw=
+github.com/avast/retry-go v2.2.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=
 github.com/coreos/go-etcd v2.0.0+incompatible/go.mod h1:Jez6KQU2B/sWsbdaef3ED8NzMklzPG4d5KIOhIy30Tk=
 github.com/coreos/go-semver v0.2.0/go.mod h1:nnelYz7RCh+5ahJtPPxZlU+153eP4D4r3EedlOD2RNk=
@@ -78,5 +80,6 @@ gopkg.in/yaml.v2 v2.2.2 h1:ZCJp+EgiOT7lHqUV2J862kp8Qj64Jo6az82+3Td9dZw=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 nanjj.github.io/nanomsg/mangos v2.0.0+incompatible h1:YhSYA/0Ps3g1qKeBEfSy+vhjOao/k8wr/qDLFeW/CL4=
 nanjj.github.io/nanomsg/mangos v2.0.0+incompatible/go.mod h1:Y1c8wmublReq0vhxMVYNSFmx3AxUHYSzmvsjaoPt2O4=
+nanomsg.org/go/mangos v2.0.0+incompatible h1:LE83iAKZmIY8CP0gI9ETWgGL9X2m0d4WH0oyIRuAJ7o=
 nanomsg.org/go/mangos/v2 v2.0.2 h1:xHLKOSFVVvqmXWcrtUB/4MO5hMPkjEcMQ7jUVcqVY6o=
 nanomsg.org/go/mangos/v2 v2.0.2/go.mod h1:t3xUorDTR13Yp5P6yhtaHH/99R2n7bgIjnvytu35Z9Y=

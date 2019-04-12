@@ -1,9 +1,9 @@
-all: hyper
+all: hyperagent
 
 test: generate
 	go test -v ./...
 
-hyper: generate
+hyperagent: generate
 	go build
 
 generate:

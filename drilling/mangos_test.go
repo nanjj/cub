@@ -296,7 +296,7 @@ func TestPair(t *testing.T) {
 //
 func TestWeatherUpdates(t *testing.T) {
 	const (
-		addr = "tcp://127.0.0.1:9999"
+		addr = "tcp://127.0.0.1:59999"
 	)
 
 	rand.Seed(time.Now().UnixNano())
@@ -315,12 +315,21 @@ func TestWeatherUpdates(t *testing.T) {
 		}
 		return
 	}
-
+	closes := make(chan func() error, 1024)
+	defer func() {
+		max := len(closes)
+		for i := 0; i < max; i++ {
+			f := <-closes
+			f()
+		}
+	}()
 	bind := func() (sock mangos.Socket, err error) {
 		if sock, err = pub.NewSocket(); err != nil {
 			return
 		}
-		err = sock.Listen(addr)
+		if err = sock.Listen(addr); err == nil {
+			closes <- sock.Close
+		}
 		return
 	}
 
@@ -342,6 +351,7 @@ func TestWeatherUpdates(t *testing.T) {
 			return
 		}
 		sock.SetOption(mangos.OptionSubscribe, []byte(""))
+		closes <- sock.Close
 		return
 	}
 
@@ -352,6 +362,7 @@ func TestWeatherUpdates(t *testing.T) {
 		}
 		msg = &WheatherUpdateMessage{}
 		err = json.Unmarshal(b, msg)
+		closes <- sock.Close
 		return
 	}
 
@@ -876,7 +887,14 @@ func TestSurvey(t *testing.T) {
 		locker  = &sync.Mutex{}
 		cond    = sync.NewCond(locker)
 	)
-
+	closes := make(chan func() error, 1024)
+	defer func() {
+		max := len(closes)
+		for i := 0; i < max; i++ {
+			f := <-closes
+			f()
+		}
+	}()
 	listen := func() (sock mangos.Socket, err error) {
 		sock, err = surveyor.NewSocket()
 		if err != nil {
@@ -886,6 +904,7 @@ func TestSurvey(t *testing.T) {
 		if err = sock.Listen(addr); err != nil {
 			tLog("listen", err)
 		}
+		closes <- sock.Close
 		sock.SetOption(mangos.OptionSurveyTime, time.Millisecond*10)
 		cond.Broadcast()
 		return
@@ -903,6 +922,7 @@ func TestSurvey(t *testing.T) {
 		if err = sock.Dial(addr); err != nil {
 			tLog("dial", err)
 		}
+		closes <- sock.Close
 		return
 	}
 
@@ -1140,5 +1160,51 @@ func TestStar(t *testing.T) {
 	}
 	if l := len(msgs); l > 0 {
 		t.Fatal(l)
+	}
+}
+
+func TestMangosPushPull(t *testing.T) {
+	const addr = "tcp://127.0.0.1:59999"
+	sockPull, err := pull.NewSocket()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = sockPull.Listen(addr); err != nil {
+		t.Fatal(err)
+	}
+	defer sockPull.Close()
+	buf := make(chan []byte, 1024)
+	g := errgroup.Group{}
+	g.Go(func() (err error) {
+		b, err := sockPull.Recv()
+		if err != nil {
+			return
+		}
+		buf <- b
+		return
+	})
+	sockPush, err := push.NewSocket()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = sockPush.Dial(addr); err != nil {
+		t.Fatal(err)
+	}
+	defer sockPush.Close()
+	err = sockPush.Send([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Wait()
+
+	if l := len(buf); l != 1 {
+		t.Fatal(l)
+	}
+
+	want := string(<-buf)
+	if want != "hello" {
+		t.Fatal(want)
 	}
 }

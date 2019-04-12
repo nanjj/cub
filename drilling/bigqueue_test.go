@@ -10,7 +10,7 @@ import (
 )
 
 func TestBigQueueUsage(t *testing.T) {
-	bqd := ".test/bing_queue_usage.bqd"
+	bqd := "testdata/bing_queue_usage.bqd"
 	MakeQueueDir(bqd)
 	q, err := bigqueue.NewBigQueue(bqd)
 	if err != nil {
@@ -52,7 +52,7 @@ func TestBigQueueUsage(t *testing.T) {
 
 func TestBigQueueConcurrency(t *testing.T) {
 	t.SkipNow()
-	bqd := ".test/bing_queue_wait.bqd"
+	bqd := "testdata/bing_queue_wait.bqd"
 	os.MkdirAll(bqd, 0755)
 	q, err := bigqueue.NewBigQueue(bqd)
 	if err != nil {

@@ -2,6 +2,7 @@ module github.com/nanjj/cub
 
 require (
 	github.com/Microsoft/go-winio v0.4.12 // indirect
+	github.com/avast/retry-go v2.2.0+incompatible
 	github.com/grandecola/bigqueue v0.2.0
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect

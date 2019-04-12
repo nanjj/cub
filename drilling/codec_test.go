@@ -106,6 +106,7 @@ func BenchmarkCodecJsonCbor(b *testing.B) {
 		benchCodec(b, cborHand)
 	})
 }
+
 func TestCborTime(t *testing.T) {
 	cborHand := &codec.CborHandle{}
 	out := make([]byte, 0, 16)
@@ -125,4 +126,54 @@ func TestCborTime(t *testing.T) {
 		t.Log(now)
 		t.Fatal()
 	}
+}
+
+var testingData = func() []byte {
+	targets := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9}
+	m := &TestingHeadBody{
+		TestingHead{
+			targets,
+			10,
+		},
+		TestingBody{"Script", "launch_vm.sh", []string{"hypercube01", "4", "4096", "40", "192.168.0.24/24"}},
+	}
+	b := make([]byte, 0, 1024)
+	enc := codec.NewEncoderBytes(&b, &codec.CborHandle{})
+	enc.Encode(m)
+	return b
+}()
+
+func TestCborPartDecode(t *testing.T) {
+	cborHand := &codec.CborHandle{}
+	head := &TestingHead{}
+	dec := codec.NewDecoderBytes(testingData, cborHand)
+	if err := dec.Decode(head); err != nil {
+		t.Fatal(err)
+	}
+	targets := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9}
+	if !reflect.DeepEqual(head.Targets, targets) {
+		t.Fatal(head)
+	}
+}
+
+func BenchmarkPartlyDecode(b *testing.B) {
+	cborHand := &codec.CborHandle{}
+	b.Run("HeadOnly", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			v := &TestingHead{}
+			dec := codec.NewDecoderBytes(testingData, cborHand)
+			if err := dec.Decode(v); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("WithBody", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			v := &TestingHeadBody{}
+			dec := codec.NewDecoderBytes(testingData, cborHand)
+			if err := dec.Decode(v); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
