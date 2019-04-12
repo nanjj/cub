@@ -1,10 +1,10 @@
 package main
 
-import "sync"
+import (
+	"sync"
 
-// var (
-// 	routes = &Routes{}
-// )
+	"github.com/nanjj/cub/tasks"
+)
 
 type Routes struct {
 	sync.Map
@@ -23,8 +23,8 @@ func (r *Routes) Get(target string) (via string) {
 	return
 }
 
-func (r *Routes) Dispatch(targets Targets) (vias map[string]Targets) {
-	vias = map[string]Targets{}
+func (r *Routes) Dispatch(targets tasks.Targets) (vias map[string]tasks.Targets) {
+	vias = map[string]tasks.Targets{}
 	for _, target := range targets {
 		via := r.Get(target)
 		if ss, ok := vias[via]; ok {

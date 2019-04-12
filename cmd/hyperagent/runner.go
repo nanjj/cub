@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/nanjj/cub/tasks"
 	"nanomsg.org/go/mangos/v2"
 	"nanomsg.org/go/mangos/v2/protocol/pull"
 	"nanomsg.org/go/mangos/v2/protocol/push"
@@ -46,7 +47,7 @@ func NewRunner(name, listen, leader string) (runner *Runner, err error) {
 		return
 	}
 
-	if err = retryListen(sock, listen); err != nil {
+	if err = tasks.RetryListen(sock, listen); err != nil {
 		return
 	}
 	runner.self = sock
@@ -54,10 +55,10 @@ func NewRunner(name, listen, leader string) (runner *Runner, err error) {
 		if sock, err = push.NewSocket(); err != nil {
 			return
 		}
-		if err = retryDial(sock, leader); err != nil {
+		if err = tasks.RetryDial(sock, leader); err != nil {
 			return
 		}
-		task := &Task{
+		task := &tasks.Task{
 			Name: "join",
 			Args: []string{name, listen, name},
 		}
@@ -79,13 +80,13 @@ func (runner *Runner) Run() (err error) {
 }
 
 func (runner *Runner) Handle() (err error) {
-	task := &Task{}
+	task := &tasks.Task{}
 	if err = task.Recv(runner.self); err != nil {
 		return
 	}
 	local := false
 	targets := task.Targets
-	vias := map[string]Targets{}
+	vias := map[string]tasks.Targets{}
 	if targets.Local() {
 		local = true
 	} else if targets.All() {
@@ -144,7 +145,7 @@ func (runner *Runner) Join(args []string) (err error) {
 		if sock, err = push.NewSocket(); err != nil {
 			return
 		}
-		if err = retryDial(sock, listen); err != nil {
+		if err = tasks.RetryDial(sock, listen); err != nil {
 			return
 		}
 		runner.members[name] = sock
@@ -159,7 +160,7 @@ func (runner *Runner) Join(args []string) (err error) {
 	if leader := runner.leader; leader != nil {
 		args[0] = runner.name
 		args[1] = ""
-		task := &Task{
+		task := &tasks.Task{
 			Name: "join",
 			Args: args,
 		}

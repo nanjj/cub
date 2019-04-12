@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nanjj/cub/tasks"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -59,7 +60,7 @@ func TestRunnerJoin(t *testing.T) {
 	}
 	r11.AddHandler("ping", ping)
 	r21.AddHandler("ping", ping)
-	task := &Task{
+	task := &tasks.Task{
 		Name: "ping",
 	}
 	startTime := time.Now()

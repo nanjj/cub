@@ -1,4 +1,4 @@
-package main
+package tasks
 
 import (
 	"log"
@@ -29,6 +29,7 @@ func (targets *Targets) ToLocal() {
 	*targets = nil
 }
 
+//go:generate codecgen -o cg_$GOFILE $GOFILE
 type Task struct {
 	Targets Targets  `codec:"targets"`
 	Id      int64    `codec:"id"`
@@ -53,7 +54,7 @@ func (task *Task) Send(sock mangos.Socket) (err error) {
 		log.Println(err)
 		return
 	}
-	if err = retrySend(sock, out); err != nil {
+	if err = RetrySend(sock, out); err != nil {
 		log.Println(err)
 		return
 	}
@@ -61,7 +62,7 @@ func (task *Task) Send(sock mangos.Socket) (err error) {
 }
 
 func (task *Task) Recv(sock mangos.Socket) (err error) {
-	in, err := retryRecv(sock)
+	in, err := RetryRecv(sock)
 	if err != nil {
 		log.Println(err)
 		return
