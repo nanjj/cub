@@ -1,10 +1,7 @@
 package main
 
 import (
-	"strings"
-
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -15,12 +12,6 @@ var (
 	}
 )
 
-func init() {
-	viper.AutomaticEnv()
-	viper.SetEnvPrefix("HYPERAGENT")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-}
-
 func main() {
 	if err := RootCmd.Execute(); err != nil {
 		RootCmd.Println(err)
@@ -28,10 +19,9 @@ func main() {
 }
 
 func RunHyperAgentE(cmd *cobra.Command, args []string) (err error) {
-	name := runnerName()
-	listen := runnerListen()
-	leader := leaderListen()
-	r, err := NewRunner(name, listen, leader)
+	cfg := &Config{}
+	cfg.init()
+	r, err := NewRunner(cfg)
 	if err != nil {
 		return
 	}

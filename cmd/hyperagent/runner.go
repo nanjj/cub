@@ -3,21 +3,16 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 
 	"github.com/nanjj/cub/tasks"
+	"github.com/opentracing/opentracing-go"
 	"nanomsg.org/go/mangos/v2"
 	"nanomsg.org/go/mangos/v2/protocol/pull"
 	"nanomsg.org/go/mangos/v2/protocol/push"
 	_ "nanomsg.org/go/mangos/v2/transport/all"
-)
-
-const (
-	RunnerListen = "runner.listen"
-	RunnerName   = "runner.name"
-	RunnerIp     = "runner.ip"
-	LeaderListen = "leader.listen"
 )
 
 type Runner struct {
@@ -28,27 +23,37 @@ type Runner struct {
 	members  map[string]mangos.Socket
 	handlers map[string]tasks.Handler
 	routes   *Routes
+	tracer   opentracing.Tracer
+	closers  []io.Closer
 }
 
-func NewRunner(name, listen, leader string) (runner *Runner, err error) {
-	runner = &Runner{
+func NewRunner(cfg *Config) (r *Runner, err error) {
+	name, listen, leader := cfg.RunnerName, cfg.RunnerListen, cfg.LeaderListen
+	r = &Runner{
 		name:     name,
 		listen:   listen,
 		members:  map[string]mangos.Socket{},
 		handlers: map[string]tasks.Handler{},
 		routes:   &Routes{},
+		closers:  []io.Closer{},
 	}
-	runner.AddHandler("join", runner.Join)
-	runner.AddHandler("ping", runner.Ping)
+	if jaeger := cfg.Jaeger; jaeger != nil {
+		var closer io.Closer
+		if r.tracer, closer, err = cfg.Jaeger.NewTracer(); err != nil {
+			return
+		}
+		r.closers = append(r.closers, closer)
+	}
+	r.AddHandler("join", r.Join)
+	r.AddHandler("ping", r.Ping)
 	sock, err := pull.NewSocket()
 	if err != nil {
 		return
 	}
-
 	if err = tasks.RetryListen(sock, listen); err != nil {
 		return
 	}
-	runner.self = sock
+	r.self = sock
 	if leader != "" {
 		if sock, err = push.NewSocket(); err != nil {
 			return
@@ -63,23 +68,23 @@ func NewRunner(name, listen, leader string) (runner *Runner, err error) {
 		if err = task.Send(sock); err != nil {
 			return
 		}
-		runner.leader = sock
+		r.leader = sock
 	}
 	return
 }
 
-func (runner *Runner) Run() (err error) {
+func (r *Runner) Run() (err error) {
 	for {
-		if err = runner.Handle(); err != nil {
+		if err = r.Handle(); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (runner *Runner) Handle() (err error) {
+func (r *Runner) Handle() (err error) {
 	task := &tasks.Task{}
-	if err = task.Recv(runner.self); err != nil {
+	if err = task.Recv(r.self); err != nil {
 		return
 	}
 	local := false
@@ -89,21 +94,21 @@ func (runner *Runner) Handle() (err error) {
 		local = true
 	} else if targets.All() {
 		local = true
-		for k, _ := range runner.members {
+		for k, _ := range r.members {
 			vias[k] = targets
 		}
 	} else {
-		vias = runner.routes.Dispatch(targets)
+		vias = r.routes.Dispatch(targets)
 	}
 	for k, v := range vias {
 		if k == "" {
-			if leader := runner.Leader(); leader == nil {
+			if leader := r.Leader(); leader == nil {
 				local = true
 				continue
 			} else {
 				var tgts tasks.Targets
 				for _, tgt := range v {
-					if string(tgt) != runner.Name() {
+					if string(tgt) != r.Name() {
 						tgts = append(tgts, tgt)
 					} else {
 						local = true
@@ -120,7 +125,7 @@ func (runner *Runner) Handle() (err error) {
 			}
 			continue
 		}
-		if member, ok := runner.members[k]; ok {
+		if member, ok := r.members[k]; ok {
 			dup := task.Dup()
 			dup.Targets = v
 			if err = dup.Send(member); err != nil {
@@ -135,7 +140,7 @@ func (runner *Runner) Handle() (err error) {
 		name := task.Name
 		args := task.Args
 		var rep []tasks.Arg
-		if f, ok := runner.handlers[name]; ok {
+		if f, ok := r.handlers[name]; ok {
 			if rep, err = f(args); err != nil {
 				log.Println(err)
 			}
@@ -150,7 +155,7 @@ func (runner *Runner) Handle() (err error) {
 				Targets: task.Ack,
 				Args:    rep,
 			}
-			if err = ack.Send(runner.Leader()); err != nil {
+			if err = ack.Send(r.Leader()); err != nil {
 				log.Println(err)
 			}
 		}
@@ -165,7 +170,7 @@ func (r *Runner) Ping(args []tasks.Arg) (ack []tasks.Arg, err error) {
 }
 
 // name,listen, members...
-func (runner *Runner) Join(args []tasks.Arg) (ack []tasks.Arg, err error) {
+func (r *Runner) Join(args []tasks.Arg) (ack []tasks.Arg, err error) {
 	l := len(args)
 	if l < 3 {
 		err = fmt.Errorf("bad request")
@@ -174,7 +179,7 @@ func (runner *Runner) Join(args []tasks.Arg) (ack []tasks.Arg, err error) {
 	name := string(args[0])
 	listen := string(args[1])
 	// add new member
-	sock, ok := runner.members[name]
+	sock, ok := r.members[name]
 	if ok && listen != "" {
 		sock.Close()
 		sock = nil
@@ -186,17 +191,17 @@ func (runner *Runner) Join(args []tasks.Arg) (ack []tasks.Arg, err error) {
 		if err = tasks.RetryDial(sock, listen); err != nil {
 			return
 		}
-		runner.members[name] = sock
+		r.members[name] = sock
 	}
 
 	// update routes
 	for i := 2; i < l; i++ {
 		target := string(args[i])
-		runner.routes.Add(target, name)
+		r.routes.Add(target, name)
 	}
 	// tell leader
-	if leader := runner.leader; leader != nil {
-		args[0] = tasks.Arg(runner.name)
+	if leader := r.leader; leader != nil {
+		args[0] = tasks.Arg(r.name)
 		args[1] = tasks.Arg("")
 		task := &tasks.Task{
 			Name: "join",
@@ -259,17 +264,21 @@ func (r *Runner) Member(name string) mangos.Socket {
 
 func (r *Runner) Close() (err error) {
 	var errs []string
-	kill := func(sock mangos.Socket) {
-		if sock != nil {
-			if err := sock.Close(); err != nil {
+	closers := []io.Closer{
+		r.Self(),
+		r.Leader(),
+	}
+	for _, m := range r.Members() {
+		closers = append(closers, r.Member(m))
+	}
+	closers = append(closers, r.closers...)
+	for i := 0; i < len(closers); i++ {
+		c := closers[i]
+		if c != nil {
+			if err := c.Close(); err != nil {
 				errs = append(errs, err.Error())
 			}
 		}
-	}
-	kill(r.self)
-	kill(r.leader)
-	for _, sock := range r.members {
-		kill(sock)
 	}
 	if errs != nil {
 		err = errors.New(strings.Join(errs, "\n"))

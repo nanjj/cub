@@ -3,23 +3,64 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
+	"strings"
 
-	"github.com/spf13/viper"
+	"github.com/uber/jaeger-client-go/config"
 )
 
-func GetString(key, defaultValue string) (value string) {
-	if value = viper.GetString(key); value == "" {
-		value = defaultValue
-	}
+const (
+	envRunnerListen                = "HYPERAGENT_RUNNER_LISTEN"
+	envRunnerName                  = "HYPERAGENT_RUNNER_NAME"
+	envRunnerIp                    = "HYPERAGENT_RUNNER_IP"
+	envLeaderListen                = "HYPERAGENT_LEADER_LISTEN"
+	envJaegerServiceName           = "JAEGER_SERVICE_NAME"
+	envJaegerTags                  = "JAEGER_TAGS"
+	envJaegerSamplerType           = "JAEGER_SAMPLER_TYPE"
+	envJaegerSamplerParam          = "JAEGER_SAMPLER_PARAM"
+	envJaegerReporterMaxQueueSize  = "JAEGER_REPORTER_MAX_QUEUE_SIZE"
+	envJaegerReporterFlushInterval = "JAEGER_REPORTER_FLUSH_INTERVAL"
+)
+
+type Config struct {
+	RunnerName   string
+	RunnerListen string
+	LeaderListen string
+	RunnerIp     string
+	Jaeger       *config.Configuration
+}
+
+func (cfg *Config) init() (err error) {
+	cfg.RunnerIp = runnerIp()
+	cfg.RunnerName = runnerName()
+	cfg.RunnerListen = runnerListen()
+	cfg.LeaderListen = leaderListen()
+	err = cfg.initJaeger()
 	return
 }
 
-func SetString(key, value string) {
-	viper.Set(key, value)
+func (cfg *Config) initJaeger() (err error) {
+	os.Setenv(envJaegerServiceName, "Hyperagent")
+	os.Setenv(envJaegerSamplerType, "const")
+	os.Setenv(envJaegerSamplerParam, "1")
+	if os.Getenv(envJaegerReporterMaxQueueSize) == "" {
+		os.Setenv(envJaegerReporterMaxQueueSize, "64")
+	}
+	if os.Getenv(envJaegerReporterFlushInterval) == "" {
+		os.Setenv(envJaegerReporterFlushInterval, "10s")
+	}
+	if tags, runnerTag := os.Getenv(envJaegerTags),
+		fmt.Sprintf("runner=%s", cfg.RunnerName); tags == "" {
+		os.Setenv(envJaegerTags, runnerTag)
+	} else if strings.Contains(tags, runnerTag) {
+		os.Setenv(envJaegerTags, fmt.Sprintf("%s,%s", tags, runnerTag))
+	}
+	cfg.Jaeger, err = config.FromEnv()
+	return
 }
 
-// firstIP returns first ip address
-func firstIP() (ipaddr string) {
+// firstIp returns first ip address
+func firstIp() (ipaddr string) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return
@@ -58,33 +99,30 @@ func firstIP() (ipaddr string) {
 }
 
 func runnerIp() (ip string) {
-	ip = GetString(RunnerIp, "")
-	if ip == "" {
-		ip = firstIP()
-		SetString(RunnerIp, ip)
+	if ip = os.Getenv(envRunnerIp); ip == "" {
+		ip = firstIp()
+		os.Setenv(envRunnerIp, ip)
 	}
 	return
 }
 
 func runnerListen() (runner string) {
-	runner = GetString(RunnerListen, "")
-	if runner == "" {
+	if runner = os.Getenv(envRunnerListen); runner == "" {
 		runner = fmt.Sprintf("tcp://%s:49160", runnerIp())
-		SetString(RunnerListen, runner)
+		os.Setenv(envRunnerListen, runner)
 	}
 	return
 }
 
 func leaderListen() (leader string) {
-	leader = GetString(LeaderListen, "")
+	leader = os.Getenv(envLeaderListen)
 	return
 }
 
 func runnerName() (name string) {
-	name = GetString(RunnerName, "")
-	if name == "" {
-		name = firstIP()
-		SetString(RunnerName, name)
+	if name = os.Getenv(envRunnerName); name == "" {
+		name = runnerIp()
+		os.Setenv(envRunnerName, name)
 	}
 	return
 }

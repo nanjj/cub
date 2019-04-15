@@ -17,15 +17,18 @@ func TestRunnerJoin(t *testing.T) {
 	addr := func(id int) string {
 		return fmt.Sprintf("tcp://127.0.0.1:100%d", id)
 	}
+	newConfig := func(name, listen, leader string) *Config {
+		return &Config{RunnerName: name, RunnerListen: listen, LeaderListen: leader}
+	}
 	// r11 <- r21
 	var g errgroup.Group
-	r11, err := NewRunner(name(11), addr(11), "")
+	r11, err := NewRunner(newConfig(name(11), addr(11), ""))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer r11.Close()
 	g.Go(r11.Run)
-	r21, err := NewRunner(name(21), addr(21), addr(11))
+	r21, err := NewRunner(newConfig(name(21), addr(21), addr(11)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +91,7 @@ func TestRunnerJoin(t *testing.T) {
 	t.Log(endTime.Sub(startTime))
 	// join r31
 	// r11 <- r21 <- r31
-	r31, err := NewRunner(name(31), addr(31), addr(21))
+	r31, err := NewRunner(newConfig(name(31), addr(31), addr(21)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +154,7 @@ func TestRunnerJoin(t *testing.T) {
 		t.Fatal()
 	}
 	// join r32 to r21
-	r32, err := NewRunner(name(32), addr(32), addr(21))
+	r32, err := NewRunner(newConfig(name(32), addr(32), addr(21)))
 	if err != nil {
 		t.Fatal(err)
 	}
