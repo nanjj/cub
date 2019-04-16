@@ -58,11 +58,11 @@ type Event struct {
 	Head
 	Action   string            `codec:"action"`
 	Carrier  map[string]string `codec:"carrier"`
-	Payload  DataObject        `codec:"payload"`
+	Payload  []DataObject      `codec:"payload"`
 	Callback string            `codec:"callback"`
 }
 
-type Handler func(context.Context, DataObject) (DataObject, error)
+type Handler func(context.Context, []DataObject) ([]DataObject, error)
 
 func (e *Event) Dup() (dup *Event) {
 	if e == nil {
@@ -71,9 +71,19 @@ func (e *Event) Dup() (dup *Event) {
 	dup = &Event{
 		Head:     e.Head.Dup(),
 		Action:   e.Action,
-		Payload:  e.Payload.Dup(),
 		Callback: e.Callback,
 	}
+	l := len(e.Payload)
+	payload := make([]DataObject, l)
+	for i := 0; i < l; i++ {
+		payload[i] = e.Payload[i].Dup()
+	}
+	dup.Payload = payload
+	carrier := map[string]string{}
+	for k, v := range e.Carrier {
+		carrier[k] = v
+	}
+	dup.Carrier = carrier
 	return
 }
 
