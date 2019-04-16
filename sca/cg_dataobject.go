@@ -11,23 +11,23 @@ import (
 
 const (
 	// ----- content types ----
-	codecSelferCcUTF83653 = 1
-	codecSelferCcRAW3653  = 255
+	codecSelferCcUTF88943 = 1
+	codecSelferCcRAW8943  = 255
 	// ----- value types used ----
-	codecSelferValueTypeArray3653  = 10
-	codecSelferValueTypeMap3653    = 9
-	codecSelferValueTypeString3653 = 6
-	codecSelferValueTypeInt3653    = 2
-	codecSelferValueTypeUint3653   = 3
-	codecSelferValueTypeFloat3653  = 4
-	codecSelferBitsize3653         = uint8(32 << (^uint(0) >> 63))
+	codecSelferValueTypeArray8943  = 10
+	codecSelferValueTypeMap8943    = 9
+	codecSelferValueTypeString8943 = 6
+	codecSelferValueTypeInt8943    = 2
+	codecSelferValueTypeUint8943   = 3
+	codecSelferValueTypeFloat8943  = 4
+	codecSelferBitsize8943         = uint8(32 << (^uint(0) >> 63))
 )
 
 var (
-	errCodecSelferOnlyMapOrArrayEncodeToStruct3653 = errors.New(`only encoded map or array can be decoded into a struct`)
+	errCodecSelferOnlyMapOrArrayEncodeToStruct8943 = errors.New(`only encoded map or array can be decoded into a struct`)
 )
 
-type codecSelfer3653 struct{}
+type codecSelfer8943 struct{}
 
 func init() {
 	if codec1978.GenVersion != 10 {
@@ -40,7 +40,7 @@ func init() {
 }
 
 func (x DataObject) CodecEncodeSelf(e *codec1978.Encoder) {
-	var h codecSelfer3653
+	var h codecSelfer8943
 	z, r := codec1978.GenHelperEncoder(e)
 	_, _, _ = h, z, r
 	if x == nil {
@@ -56,7 +56,7 @@ func (x DataObject) CodecEncodeSelf(e *codec1978.Encoder) {
 }
 
 func (x *DataObject) CodecDecodeSelf(d *codec1978.Decoder) {
-	var h codecSelfer3653
+	var h codecSelfer8943
 	z, r := codec1978.GenHelperDecoder(d)
 	_, _, _ = h, z, r
 	if false {
@@ -67,15 +67,15 @@ func (x *DataObject) CodecDecodeSelf(d *codec1978.Decoder) {
 	}
 }
 
-func (x codecSelfer3653) encDataObject(v DataObject, e *codec1978.Encoder) {
-	var h codecSelfer3653
+func (x codecSelfer8943) encDataObject(v DataObject, e *codec1978.Encoder) {
+	var h codecSelfer8943
 	z, r := codec1978.GenHelperEncoder(e)
 	_, _, _ = h, z, r
 	r.EncodeStringBytesRaw([]byte(v))
 }
 
-func (x codecSelfer3653) decDataObject(v *DataObject, d *codec1978.Decoder) {
-	var h codecSelfer3653
+func (x codecSelfer8943) decDataObject(v *DataObject, d *codec1978.Decoder) {
+	var h codecSelfer8943
 	z, r := codec1978.GenHelperDecoder(d)
 	_, _, _ = h, z, r
 	*v = r.DecodeBytes(*((*[]byte)(v)), false)
