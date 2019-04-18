@@ -2,8 +2,9 @@ package sca
 
 import "github.com/ugorji/go/codec"
 
-//go:generate codecgen -o cg_$GOFILE $GOFILE
-type DataObject []byte
+var (
+	cbor = &codec.CborHandle{}
+)
 
 func (d *DataObject) Encode(i interface{}) (err error) {
 	switch v := i.(type) {

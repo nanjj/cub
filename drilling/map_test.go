@@ -2,6 +2,7 @@ package drilling
 
 import (
 	"math/rand"
+	"sync"
 	"testing"
 )
 
@@ -24,6 +25,14 @@ var (
 			m[rand.Intn(999999)] = true
 		}
 		m[testIntKey] = true
+		return m
+	}()
+	testSyncMapString = func() sync.Map {
+		m := sync.Map{}
+		for i := 0; i < 100000; i++ {
+			m.Store(RandomString(16), true)
+		}
+		m.Store(testStringKey, true)
 		return m
 	}()
 )
@@ -57,8 +66,23 @@ func BenchmarkMap(b *testing.B) {
 			}
 		}
 	})
+	b.Run("syncMapString", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if _, ok := testSyncMapString.Load(testStringKey); !ok {
+				b.Fatal()
+			}
+		}
+	})
+	b.Run("syncMapStringNo", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if _, ok := testSyncMapString.Load(testStringKeyNo); ok {
+				b.Fatal()
+			}
+		}
+	})
 
 }
+
 func TestRandomString(t *testing.T) {
 	t.Log(RandomString(10))
 }
