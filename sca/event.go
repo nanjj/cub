@@ -9,6 +9,15 @@ import (
 	"nanomsg.org/go/mangos/v2"
 )
 
+func (h Head) Dup() (dup Head) {
+	dup = Head{
+		Id:       h.Id,
+		Receiver: h.Receiver.Dup(),
+		Sender:   h.Sender.Dup(),
+	}
+	return
+}
+
 func (e *Event) Dup() (dup *Event) {
 	if e == nil {
 		return
