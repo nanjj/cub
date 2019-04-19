@@ -1,8 +1,9 @@
-package sca
+package sca_test
 
 import (
 	"testing"
 
+	"github.com/nanjj/cub/sca"
 	"github.com/opentracing/opentracing-go"
 )
 
@@ -18,7 +19,7 @@ func TestContext(t *testing.T) {
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
 			values := tc.values
-			ctx := WithValues(nil, values)
+			ctx := sca.WithValues(nil, values)
 			for k, v := range values {
 				if value, ok := ctx.Value(k).(string); !ok || value != v {
 					t.Log(values)
@@ -31,11 +32,12 @@ func TestContext(t *testing.T) {
 	}
 }
 
-func TestExtract(t *testing.T) {
+func TestSpanContext(t *testing.T) {
 	tracer := opentracing.GlobalTracer()
-	sp := tracer.StartSpan("TestExtract")
+	sp := tracer.StartSpan("TestSpanContext")
 	defer sp.Finish()
-	carrier, err := Inject(tracer, sp.Context())
+	carrier := map[string]string{}
+	err := sca.Inject(tracer, sp.Context(), carrier)
 	if err != nil {
 		t.Fatal()
 	}
@@ -43,11 +45,11 @@ func TestExtract(t *testing.T) {
 	if len(carrier) != 1 {
 		t.Fatal(carrier)
 	}
-	sc, err := Extract(tracer, carrier)
+	sc, err := sca.Extract(tracer, carrier)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := WithValues(nil, carrier)
+	ctx := sca.WithValues(nil, carrier)
 	sp, ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "TestInject", opentracing.FollowsFrom(sc))
 	defer sp.Finish()
 }

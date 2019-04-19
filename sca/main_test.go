@@ -1,4 +1,4 @@
-package sca
+package sca_test
 
 import (
 	"io"

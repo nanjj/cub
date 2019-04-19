@@ -1,9 +1,11 @@
-package sca
+package sca_test
 
 import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/nanjj/cub/sca"
 )
 
 func TestDataObjectString(t *testing.T) {
@@ -15,7 +17,7 @@ func TestDataObjectString(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			d := DataObject{}
+			d := sca.DataObject{}
 			if err := d.Encode(tc.s); err != nil {
 				t.Fatal(err)
 			}
@@ -34,7 +36,7 @@ func BenchmarkDataObjectString(b *testing.B) {
 	hello := "hello"
 	b.Run("DataObject", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			d := DataObject{}
+			d := sca.DataObject{}
 			if err := d.Encode(hello); err != nil {
 				b.Fatal(err)
 			}
@@ -68,7 +70,7 @@ func TestDataObjectBytes(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			d := DataObject{}
+			d := sca.DataObject{}
 			if err := d.Encode(tc.b); err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +101,7 @@ func TestDataObjectStruct(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			d := DataObject{}
+			d := sca.DataObject{}
 			if err := d.Encode(tc); err != nil {
 				t.Fatal(err)
 			}

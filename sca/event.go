@@ -1,8 +1,10 @@
 package sca
 
 import (
+	"context"
 	"log"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/ugorji/go/codec"
 	"nanomsg.org/go/mangos/v2"
 )
@@ -30,7 +32,14 @@ func (e *Event) Dup() (dup *Event) {
 	return
 }
 
-func (e *Event) Send(sock mangos.Socket) (err error) {
+func (e *Event) Emit(ctx context.Context, sock mangos.Socket) (err error) {
+	sp, ctx := StartSpanFromContext(ctx, "Emit")
+	defer sp.Finish()
+	tracer := sp.Tracer()
+	if e.Carrier == nil {
+		e.Carrier = map[string]string{}
+	}
+	Inject(tracer, sp.Context(), e.Carrier)
 	out := make([]byte, 0, 1024)
 	enc := codec.NewEncoderBytes(&out, cbor)
 	if err = enc.Encode(e); err != nil {
@@ -55,5 +64,16 @@ func (e *Event) Recv(sock mangos.Socket) (err error) {
 		log.Println(err)
 		return
 	}
+	return
+}
+
+func (e *Event) SpanContext(tracer opentracing.Tracer, name string) (sp opentracing.Span, ctx context.Context) {
+	ctx = WithValues(context.Background(), e.Carrier)
+	opts := []opentracing.StartSpanOption{}
+	if sc, err := Extract(tracer, e.Carrier); err == nil {
+		opts = append(opts, opentracing.ChildOf(sc))
+	}
+	sp = tracer.StartSpan(name, opts...)
+	ctx = opentracing.ContextWithSpan(ctx, sp)
 	return
 }
