@@ -35,8 +35,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		return
 	}
 	ctx := context.Background()
-	sp := tracer.StartSpan("NewRunner")
-	defer sp.Finish()
+	sp, ctx := StartSpanFromContextWithTracer(ctx, tracer, "NewRunner")
 	r = &Runner{
 		name:    name,
 		listen:  listen,
@@ -46,7 +45,6 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		closers: []io.Closer{closer},
 		tracer:  tracer,
 	}
-	ctx = opentracing.ContextWithSpan(ctx, sp)
 	r.closers = append(r.closers, closer)
 	r.AddAction("join", r.Join)
 	r.AddAction("ping", r.Ping)
@@ -55,20 +53,17 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		return
 	}
 	if err = RetryListen(sock, listen); err != nil {
-		sp.LogKV("error", err)
 		log.Fatal(err)
 		return
 	}
 	r.self = sock
 	if leader != "" {
 		if sock, err = push.NewSocket(); err != nil {
-			sp.LogKV("error", err)
-			log.Fatal(err)
+			sp.Fatal(err)
 			return
 		}
 		if err = RetryDial(sock, leader); err != nil {
-			sp.LogKV("error", err)
-			log.Fatal(err)
+			sp.Fatal(err)
 			return
 		}
 		e := &Event{
@@ -76,8 +71,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 			Payload: Payload{DataObject(name), DataObject(listen), DataObject(name)},
 		}
 		if err = Send(ctx, sock, e); err != nil {
-			sp.SetTag("error", true)
-			sp.LogKV("error", err)
+			sp.Println(err)
 			return
 		}
 		r.leader = sock
@@ -193,7 +187,7 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 	l := len(req)
 	if l < 3 {
 		err = fmt.Errorf("bad request")
-		sp.LogKV("error", err)
+		sp.Println(err)
 		return
 	}
 	name := string(req[0])
@@ -206,11 +200,11 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 	}
 	if sock == nil {
 		if sock, err = push.NewSocket(); err != nil {
-			sp.LogKV("error", err)
+			sp.Println(err)
 			return
 		}
 		if err = RetryDial(sock, listen); err != nil {
-			sp.LogKV("error", err)
+			sp.Println(err)
 			return
 		}
 		r.members.Add(name, sock)
@@ -230,7 +224,7 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 			Payload: req,
 		}
 		if err = Send(ctx, leader, e); err != nil {
-			sp.LogKV("error", err)
+			sp.Println(err)
 			return
 		}
 	}
