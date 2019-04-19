@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/nanjj/cub/sca"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -19,9 +20,9 @@ func main() {
 }
 
 func RunHyperAgentE(cmd *cobra.Command, args []string) (err error) {
-	cfg := &Config{}
-	cfg.init()
-	r, err := NewRunner(cfg)
+	cfg := &sca.Config{}
+	cfg.FromEnv()
+	r, err := sca.NewRunner(cfg)
 	if err != nil {
 		return
 	}
