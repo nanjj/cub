@@ -11,7 +11,7 @@ import (
 	"github.com/uber/jaeger-client-go/config"
 )
 
-type SpanWritter struct {
+type spanWritter struct {
 	span opentracing.Span
 }
 
@@ -20,7 +20,7 @@ type SpanLogger struct {
 	*log.Logger
 }
 
-func (w *SpanWritter) Write(b []byte) (n int, err error) {
+func (w *spanWritter) Write(b []byte) (n int, err error) {
 	if sp := w.span; sp != nil {
 		s := strings.TrimSpace(string(b))
 		w.span.LogKV("message", s)
@@ -31,6 +31,7 @@ func (w *SpanWritter) Write(b []byte) (n int, err error) {
 	return
 }
 
+// TracerFromContext get tracer from context or global tracer
 func TracerFromContext(ctx context.Context) (tracer opentracing.Tracer) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		tracer = sp.Tracer()
@@ -40,6 +41,7 @@ func TracerFromContext(ctx context.Context) (tracer opentracing.Tracer) {
 	return
 }
 
+// NewTracer - returns a new tracer
 func NewTracer(name, runner, leader string) (tracer opentracing.Tracer, closer io.Closer, err error) {
 	c, err := config.FromEnv()
 	if err != nil {
@@ -62,6 +64,7 @@ func NewTracer(name, runner, leader string) (tracer opentracing.Tracer, closer i
 
 }
 
+//StartSpanFromContext -
 func StartSpanFromContext(c context.Context, name string) (sl *SpanLogger, ctx context.Context) {
 	if c == nil {
 		c = context.Background()
@@ -72,13 +75,14 @@ func StartSpanFromContext(c context.Context, name string) (sl *SpanLogger, ctx c
 	return
 }
 
+// StartSpanFromContextWithTracer -
 func StartSpanFromContextWithTracer(c context.Context, tracer opentracing.Tracer, name string) (sl *SpanLogger, ctx context.Context) {
 	if c == nil {
 		c = context.Background()
 	}
 	ctx = c
 	sp, ctx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, name)
-	logger := log.New(&SpanWritter{sp}, "", log.Lshortfile)
+	logger := log.New(&spanWritter{sp}, "", log.Lshortfile)
 	sl = &SpanLogger{sp, logger}
 	return
 }
