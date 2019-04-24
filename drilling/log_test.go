@@ -13,16 +13,20 @@ type SpanWritter struct {
 	span opentracing.Span
 }
 
-type SpanLogger struct {
-	opentracing.Span
-	*log.Logger
-}
-
 func (w *SpanWritter) Write(b []byte) (n int, err error) {
 	s := strings.TrimSpace(string(b))
 	w.span.LogKV("message", s)
 	n = len(b)
 	return
+}
+
+type SpanLogger struct {
+	opentracing.Span
+	*log.Logger
+}
+
+func (sp SpanLogger) MarkError() {
+	sp.SetTag("error", true)
 }
 
 func TracerFromContext(ctx context.Context) (tracer opentracing.Tracer) {
@@ -54,4 +58,12 @@ func TestStartSpanFromContextLogger(t *testing.T) {
 	logger2, ctx := StartSpanFromContext(ctx, "TestStartSpanFromContextLogger2")
 	defer logger2.Finish()
 	logger2.Println("why?")
+}
+
+func TestSpanStdLog(t *testing.T) {
+	sp, _ := StartSpanFromContext(context.Background(), "TestSpanStdLog")
+	defer sp.Finish()
+	sp.Println("invalid parameter")
+	sp.MarkError()
+	// Trace: http://127.0.0.1:16686/trace/3ce2a393b55083cb
 }
