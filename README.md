@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/nanjj/cub.svg?branch=master)](https://travis-ci.org/nanjj/cub)
+
 # cub
 ```
             _

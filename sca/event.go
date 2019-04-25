@@ -50,7 +50,7 @@ func (e *Event) Emit(ctx context.Context, sock mangos.Socket) (err error) {
 	}
 	Inject(tracer, sp.Context(), e.Carrier)
 	out := make([]byte, 0, 1024)
-	enc := codec.NewEncoderBytes(&out, cbor)
+	enc := codec.NewEncoderBytes(&out, msgpack)
 	if err = enc.Encode(e); err != nil {
 		log.Println(err)
 		return
@@ -68,7 +68,7 @@ func (e *Event) Recv(sock mangos.Socket) (err error) {
 		log.Println(err)
 		return
 	}
-	dec := codec.NewDecoderBytes(in, cbor)
+	dec := codec.NewDecoderBytes(in, msgpack)
 	if err = dec.Decode(e); err != nil {
 		log.Println(err)
 		return

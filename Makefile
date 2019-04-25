@@ -1,4 +1,7 @@
-all: tidy
+all: test
 
 tidy:
 	go mod tidy
+
+test:
+	go test -v ./cmd/... ./sca/...

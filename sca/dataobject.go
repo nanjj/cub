@@ -3,7 +3,7 @@ package sca
 import "github.com/ugorji/go/codec"
 
 var (
-	cbor = &codec.CborHandle{}
+	msgpack = &codec.MsgpackHandle{}
 )
 
 func (d *DataObject) Encode(i interface{}) (err error) {
@@ -15,9 +15,9 @@ func (d *DataObject) Encode(i interface{}) (err error) {
 			*d = make([]byte, len(v))
 			copy(*d, v)
 		}
-	default: // cbor
+	default: // msgpack
 		out := make([]byte, 0, 256)
-		enc := codec.NewEncoderBytes(&out, cbor)
+		enc := codec.NewEncoderBytes(&out, msgpack)
 		if err = enc.Encode(v); err == nil {
 			*d = out
 		}
@@ -33,7 +33,7 @@ func (d DataObject) Decode(i interface{}) (err error) {
 		*v = make([]byte, len(d))
 		copy(*v, d)
 	default:
-		dec := codec.NewDecoderBytes(d, cbor)
+		dec := codec.NewDecoderBytes(d, msgpack)
 		err = dec.Decode(v)
 	}
 	return
