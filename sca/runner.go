@@ -70,7 +70,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 			Action:  "join",
 			Payload: Payload{DataObject(name), DataObject(listen), DataObject(name)},
 		}
-		if err = Send(ctx, sock, e); err != nil {
+		if err = SendEvent(ctx, sock, e); err != nil {
 			sp.Println(err)
 			return
 		}
@@ -82,12 +82,10 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 func (r *Runner) Run() (err error) {
 	for {
 		e := &Event{}
-		if err = e.Recv(r.self); err != nil {
-			log.Println(err)
+		if err = RecvEvent(context.Background(), r.self, e); err != nil {
 			continue
 		}
 		if err = r.Handle(e); err != nil {
-			log.Println(err)
 			continue
 		}
 	}
@@ -96,7 +94,7 @@ func (r *Runner) Run() (err error) {
 
 func (r *Runner) Handle(e *Event) (err error) {
 	tracer := r.Tracer()
-	sp, ctx := e.SpanContext(tracer, "Recv")
+	sp, ctx := StartSpanFromCarrier(e.Carrier, tracer, "Recv")
 	defer sp.Finish()
 	local := false
 	targets := e.Receiver
@@ -128,7 +126,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 				if len(tgts) != 0 {
 					dup := e.Dup()
 					dup.Receiver = tgts
-					if err = Send(ctx, leader, dup); err != nil {
+					if err = SendEvent(ctx, leader, dup); err != nil {
 						log.Println(err)
 						return
 					}
@@ -139,7 +137,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 		if member, ok := r.members.Get(k); ok {
 			dup := e.Dup()
 			dup.Receiver = v
-			if err = Send(ctx, member, dup); err != nil {
+			if err = SendEvent(ctx, member, dup); err != nil {
 				log.Println(err)
 				return
 			}
@@ -164,7 +162,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 			ack := Event{Action: callback}
 			ack.Receiver = e.Sender
 			ack.Payload = rep
-			if err = Send(ctx, r.Leader(), &ack); err != nil {
+			if err = SendEvent(ctx, r.Leader(), &ack); err != nil {
 				log.Println(err)
 			}
 		}
@@ -223,7 +221,7 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 			Action:  "join",
 			Payload: req,
 		}
-		if err = Send(ctx, leader, e); err != nil {
+		if err = SendEvent(ctx, leader, e); err != nil {
 			sp.Println(err)
 			return
 		}
