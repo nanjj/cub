@@ -70,14 +70,14 @@ func TestRunnerJoin(t *testing.T) {
 		Action: "ping",
 	}
 	startTime := time.Now()
-	if err := sca.Send(context.Background(), r21.Leader(), event); err != nil {
+	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime := <-ch
 	t.Log(endTime.Sub(startTime))
 	event.Receiver = []string{name(11)}
 	startTime = time.Now()
-	if err := sca.Send(context.Background(), r21.Leader(), event); err != nil {
+	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime = <-ch
@@ -85,7 +85,7 @@ func TestRunnerJoin(t *testing.T) {
 	// ping all
 	event.Receiver.ToAll()
 	startTime = time.Now()
-	if err := sca.Send(context.Background(), r21.Leader(), event); err != nil {
+	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime = <-ch
@@ -132,7 +132,7 @@ func TestRunnerJoin(t *testing.T) {
 	r31.AddAction("ping", ping)
 	event.Receiver = []string{r31.Name()}
 	startTime = time.Now()
-	if err := sca.Send(context.Background(), r21.Leader(), event); err != nil {
+	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime = <-ch
@@ -140,7 +140,7 @@ func TestRunnerJoin(t *testing.T) {
 	// ping all
 	event.Receiver.ToAll()
 	startTime = time.Now()
-	if err := sca.Send(context.Background(), r21.Leader(), event); err != nil {
+	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
 	}
 	// r11 pong
@@ -193,7 +193,7 @@ func TestRunnerJoin(t *testing.T) {
 	r32.AddAction("ping", ping)
 	event.Receiver.ToAll()
 	startTime = time.Now()
-	if err := sca.Send(context.Background(), r21.Leader(), event); err != nil {
+	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
 	}
 	// r11 pong

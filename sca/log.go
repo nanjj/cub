@@ -86,3 +86,15 @@ func StartSpanFromContextWithTracer(c context.Context, tracer opentracing.Tracer
 	sl = &SpanLogger{sp, logger}
 	return
 }
+
+func StartSpanFromCarrier(carrier map[string]string, tracer opentracing.Tracer, name string) (sl *SpanLogger, ctx context.Context) {
+	ctx = WithValues(context.Background(), carrier)
+	opts := []opentracing.StartSpanOption{}
+	if sc, err := Extract(tracer, carrier); err == nil {
+		opts = append(opts, opentracing.ChildOf(sc))
+	}
+	sp := tracer.StartSpan(name, opts...)
+	sl = &SpanLogger{sp, log.New(&spanWritter{sp}, "", log.Lshortfile)}
+	ctx = opentracing.ContextWithSpan(ctx, sp)
+	return
+}
