@@ -4,30 +4,19 @@ import (
 	"context"
 	"io"
 	"log"
-	"os"
-	"strings"
 
 	"github.com/opentracing/opentracing-go"
+	slog "github.com/opentracing/opentracing-go/log"
 	"github.com/uber/jaeger-client-go/config"
 )
-
-type spanWritter struct {
-	span opentracing.Span
-}
 
 type SpanLogger struct {
 	opentracing.Span
 	*log.Logger
 }
 
-func (w *spanWritter) Write(b []byte) (n int, err error) {
-	if sp := w.span; sp != nil {
-		s := strings.TrimSpace(string(b))
-		w.span.LogKV("message", s)
-		n = len(b)
-	} else {
-		n, err = os.Stderr.Write(b)
-	}
+func (w *SpanLogger) Write(b []byte) (n int, err error) {
+	w.LogFields(slog.String("message", string(b)))
 	return
 }
 
@@ -76,14 +65,19 @@ func StartSpanFromContext(c context.Context, name string) (sl *SpanLogger, ctx c
 }
 
 // StartSpanFromContextWithTracer -
-func StartSpanFromContextWithTracer(c context.Context, tracer opentracing.Tracer, name string) (sl *SpanLogger, ctx context.Context) {
+func StartSpanFromContextWithTracer(c context.Context, tracer opentracing.Tracer, name string, opts ...opentracing.StartSpanOption) (sl *SpanLogger, ctx context.Context) {
 	if c == nil {
 		c = context.Background()
 	}
 	ctx = c
-	sp, ctx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, name)
-	logger := log.New(&spanWritter{sp}, "", log.Lshortfile)
-	sl = &SpanLogger{sp, logger}
+	if parentSpan := SpanFromContext(ctx); parentSpan != nil {
+		opts = append(opts, opentracing.ChildOf(parentSpan.Context()))
+	}
+	sp := tracer.StartSpan(name, opts...)
+	sl = &SpanLogger{Span: sp}
+	logger := log.New(sl, "", log.Lshortfile)
+	sl.Logger = logger
+	ctx = opentracing.ContextWithSpan(ctx, sl)
 	return
 }
 
@@ -94,7 +88,19 @@ func StartSpanFromCarrier(carrier map[string]string, tracer opentracing.Tracer, 
 		opts = append(opts, opentracing.ChildOf(sc))
 	}
 	sp := tracer.StartSpan(name, opts...)
-	sl = &SpanLogger{sp, log.New(&spanWritter{sp}, "", log.Lshortfile)}
-	ctx = opentracing.ContextWithSpan(ctx, sp)
+	sl = &SpanLogger{Span: sp}
+	logger := log.New(sl, "", log.Lshortfile)
+	sl.Logger = logger
+	ctx = opentracing.ContextWithSpan(ctx, sl)
+	return
+}
+
+func SpanFromContext(ctx context.Context) (sp *SpanLogger) {
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		var ok bool
+		if sp, ok = span.(*SpanLogger); ok {
+			return
+		}
+	}
 	return
 }
