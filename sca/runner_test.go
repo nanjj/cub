@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nanjj/cub/logs"
 	"github.com/nanjj/cub/sca"
 	"golang.org/x/sync/errgroup"
 )
@@ -59,7 +60,7 @@ func TestRunnerJoin(t *testing.T) {
 	// ping r11
 	ch := make(chan time.Time, 1024)
 	ping := func(ctx context.Context, req sca.Payload) (rep sca.Payload, err error) {
-		sp, ctx := sca.StartSpanFromContext(ctx, "ping")
+		sp, ctx := logs.StartSpanFromContext(ctx, "ping")
 		defer sp.Finish()
 		ch <- time.Now()
 		return
