@@ -4,18 +4,19 @@ import (
 	"context"
 	"log"
 
+	"github.com/nanjj/cub/logs"
 	"github.com/ugorji/go/codec"
 	"nanomsg.org/go/mangos/v2"
 )
 
 func SendEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
-	sp, ctx := StartSpanFromContext(ctx, "SendEvent")
+	sp, ctx := logs.StartSpanFromContext(ctx, "SendEvent")
 	defer sp.Finish()
 	tracer := sp.Tracer()
 	if e.Carrier == nil {
 		e.Carrier = map[string]string{}
 	}
-	Inject(tracer, sp.Context(), e.Carrier)
+	logs.Inject(tracer, sp.Context(), e.Carrier)
 	out := make([]byte, 0, 1024)
 	enc := codec.NewEncoderBytes(&out, msgpack)
 	if err = enc.Encode(e); err != nil {
@@ -30,16 +31,16 @@ func SendEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
 }
 
 func RecvEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
-	sp, ctx := StartSpanFromContext(ctx, "RecvEvent")
+	sp, ctx := logs.StartSpanFromContext(ctx, "RecvEvent")
 	defer sp.Finish()
 	in, err := RetryRecv(sock)
 	if err != nil {
-		sp.Println(err)
+		sp.Error(err.Error())
 		return
 	}
 	dec := codec.NewDecoderBytes(in, msgpack)
 	if err = dec.Decode(e); err != nil {
-		sp.Println(err)
+		sp.Error(err.Error())
 		return
 	}
 	return

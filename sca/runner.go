@@ -8,6 +8,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/nanjj/cub/logs"
 	"github.com/opentracing/opentracing-go"
 	"nanomsg.org/go/mangos/v2"
 	"nanomsg.org/go/mangos/v2/protocol/pull"
@@ -35,7 +36,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		return
 	}
 	ctx := context.Background()
-	sp, ctx := StartSpanFromContextWithTracer(ctx, tracer, "NewRunner")
+	sp, ctx := logs.StartSpanFromContextWithTracer(ctx, tracer, "NewRunner")
 	r = &Runner{
 		name:    name,
 		listen:  listen,
@@ -59,11 +60,11 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	r.self = sock
 	if leader != "" {
 		if sock, err = push.NewSocket(); err != nil {
-			sp.Fatal(err)
+			sp.Fatal(err.Error())
 			return
 		}
 		if err = RetryDial(sock, leader); err != nil {
-			sp.Fatal(err)
+			sp.Fatal(err.Error())
 			return
 		}
 		e := &Event{
@@ -71,7 +72,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 			Payload: Payload{DataObject(name), DataObject(listen), DataObject(name)},
 		}
 		if err = SendEvent(ctx, sock, e); err != nil {
-			sp.Println(err)
+			sp.Error(err.Error())
 			return
 		}
 		r.leader = sock
@@ -94,7 +95,7 @@ func (r *Runner) Run() (err error) {
 
 func (r *Runner) Handle(e *Event) (err error) {
 	tracer := r.Tracer()
-	sp, ctx := StartSpanFromCarrier(e.Carrier, tracer, "Recv")
+	sp, ctx := logs.StartSpanFromCarrier(e.Carrier, tracer, "Recv")
 	defer sp.Finish()
 	local := false
 	targets := e.Receiver
@@ -180,12 +181,12 @@ func (r *Runner) Ping(ctx context.Context, req Payload) (rep Payload, err error)
 
 // name,listen, members...
 func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error) {
-	sp, ctx := StartSpanFromContext(ctx, "Join")
+	sp, ctx := logs.StartSpanFromContext(ctx, "Join")
 	defer sp.Finish()
 	l := len(req)
 	if l < 3 {
 		err = fmt.Errorf("bad request")
-		sp.Println(err)
+		sp.Error(err.Error())
 		return
 	}
 	name := string(req[0])
@@ -198,11 +199,11 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 	}
 	if sock == nil {
 		if sock, err = push.NewSocket(); err != nil {
-			sp.Println(err)
+			sp.Error(err.Error())
 			return
 		}
 		if err = RetryDial(sock, listen); err != nil {
-			sp.Println(err)
+			sp.Error(err.Error())
 			return
 		}
 		r.members.Add(name, sock)
@@ -222,7 +223,7 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 			Payload: req,
 		}
 		if err = SendEvent(ctx, leader, e); err != nil {
-			sp.Println(err)
+			sp.Error(err.Error())
 			return
 		}
 	}
