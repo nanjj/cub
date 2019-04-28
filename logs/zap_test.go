@@ -1,6 +1,6 @@
 package logs_test
 
-//go:generate mockgen -destination mock_$GOFILE -package logs_test github.com/opentracing/opentracing-go Span
+//go:generate mockgen -destination mock_$GOFILE -package logs_test github.com/opentracing/opentracing-go Span,Tracer,SpanContext
 
 import (
 	"fmt"

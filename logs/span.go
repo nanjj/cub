@@ -81,9 +81,11 @@ func StartSpanFromCarrier(carrier map[string]string, tracer opentracing.Tracer, 
 
 func SpanFromContext(ctx context.Context) (sp *SpanLogger) {
 	if span := opentracing.SpanFromContext(ctx); span != nil {
-		var ok bool
+		ok := false
 		if sp, ok = span.(*SpanLogger); ok {
 			return
+		} else {
+			sp = NewSpanLogger(span)
 		}
 	}
 	return
