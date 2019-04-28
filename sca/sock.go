@@ -2,10 +2,10 @@ package sca
 
 import (
 	"context"
-	"log"
 
 	"github.com/nanjj/cub/logs"
 	"github.com/ugorji/go/codec"
+	"go.uber.org/zap"
 	"nanomsg.org/go/mangos/v2"
 )
 
@@ -20,11 +20,11 @@ func SendEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
 	out := make([]byte, 0, 1024)
 	enc := codec.NewEncoderBytes(&out, msgpack)
 	if err = enc.Encode(e); err != nil {
-		log.Println(err)
+		sp.Error("Failed to encode", zap.Stack("stack"), zap.Error(err))
 		return
 	}
 	if err = RetrySend(sock, out); err != nil {
-		log.Println(err)
+		sp.Error("failed to send", zap.Stack("stack"), zap.Error(err))
 		return
 	}
 	return
@@ -35,12 +35,12 @@ func RecvEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
 	defer sp.Finish()
 	in, err := RetryRecv(sock)
 	if err != nil {
-		sp.Error(err.Error())
+		sp.Error("Failed to receive", zap.Stack("stack"), zap.Error(err))
 		return
 	}
 	dec := codec.NewDecoderBytes(in, msgpack)
 	if err = dec.Decode(e); err != nil {
-		sp.Error(err.Error())
+		sp.Error("Failed to decode", zap.Stack("stack"), zap.Error(err))
 		return
 	}
 	return
