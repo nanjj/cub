@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
-	"go.uber.org/zap"
 )
 
 func WithValues(c context.Context,
@@ -32,19 +31,6 @@ func Inject(tracer opentracing.Tracer,
 	return
 }
 
-type SpanLogger struct {
-	opentracing.Span
-	*zap.Logger
-}
-
-func NewSpanLogger(span opentracing.Span) (logger *SpanLogger) {
-	logger = &SpanLogger{
-		Span:   span,
-		Logger: zap.New(NewSpanZapCore(span), zap.AddCaller()),
-	}
-	return
-}
-
 // TracerFromContext get tracer from context or global tracer
 func TracerFromContext(ctx context.Context) (tracer opentracing.Tracer) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
@@ -56,13 +42,13 @@ func TracerFromContext(ctx context.Context) (tracer opentracing.Tracer) {
 }
 
 //StartSpanFromContext -
-func StartSpanFromContext(c context.Context, name string) (sl *SpanLogger, ctx context.Context) {
+func StartSpanFromContext(c context.Context, name string, opts ...opentracing.StartSpanOption) (sl *SpanLogger, ctx context.Context) {
 	if c == nil {
 		c = context.Background()
 	}
 	ctx = c
 	tracer := TracerFromContext(ctx)
-	sl, ctx = StartSpanFromContextWithTracer(ctx, tracer, name)
+	sl, ctx = StartSpanFromContextWithTracer(ctx, tracer, name, opts...)
 	return
 }
 

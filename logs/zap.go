@@ -3,11 +3,17 @@ package logs
 import (
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+)
+
+var (
+	Level = zapcore.Level(-2)
 )
 
 type SpanZapCore struct {
@@ -39,13 +45,19 @@ func NewFieldsSpan(sp opentracing.Span) *FieldsSpan {
 }
 
 func NewSpanZapCore(sp opentracing.Span) *SpanZapCore {
-	return &SpanZapCore{NewFieldsSpan(sp), zapcore.DebugLevel}
+	level := zapcore.InfoLevel
+	if Level < zapcore.DebugLevel {
+		if s := os.Getenv("LOGS_LEVEL"); s != "" {
+			level.Set(s)
+		}
+		Level = level
+	} else {
+		level = Level
+	}
+	return &SpanZapCore{NewFieldsSpan(sp), level}
 }
 
 func (c *SpanZapCore) With(fields []zapcore.Field) (core zapcore.Core) {
-	if len(fields) == 0 {
-		return c
-	}
 	parent := c.FieldsSpan
 	span := parent.span
 	core = &SpanZapCore{
@@ -85,13 +97,15 @@ func (c *SpanZapCore) Sync() error {
 }
 
 func entryFields(entry zapcore.Entry) (fields []log.Field) {
-	fields = make([]log.Field, 3)
-	fields[0] = log.String("message", entry.Message)
-	fields[1] = log.String("caller", entry.Caller.TrimmedPath())
+	fields = make([]log.Field, 0, 3)
+	if entry.Message != "" {
+		fields = append(fields, log.String("message", entry.Message))
+	}
+	if caller := entry.Caller; caller.Defined {
+		fields = append(fields, log.String("caller", caller.TrimmedPath()))
+	}
 	if stack := entry.Stack; stack != "" {
-		fields[3] = log.String("stack", stack)
-	} else {
-		fields = fields[0:2]
+		fields = append(fields, log.String("stack", stack))
 	}
 	return
 }
@@ -136,4 +150,33 @@ func logField(zapField zapcore.Field) log.Field {
 	default:
 		return log.Object(zapField.Key, zapField.Interface)
 	}
+}
+
+type SpanLogger struct {
+	opentracing.Span
+	*zap.Logger
+}
+
+func NewSpanLogger(span opentracing.Span) (logger *SpanLogger) {
+	logger = &SpanLogger{
+		Span:   span,
+		Logger: zap.New(NewSpanZapCore(span)),
+	}
+	return
+}
+
+func (l *SpanLogger) WithOptions(opts ...zap.Option) *SpanLogger {
+	if len(opts) == 0 {
+		return l
+	}
+	c := l.Logger.WithOptions(opts...)
+	return &SpanLogger{l.Span, c}
+}
+
+func (l *SpanLogger) With(fields ...zap.Field) *SpanLogger {
+	if len(fields) == 0 {
+		return l
+	}
+	c := l.Logger.With(fields...)
+	return &SpanLogger{l.Span, c}
 }
