@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,15 +17,15 @@ import (
 	"github.com/opentracing/opentracing-go/log"
 )
 
-type Matches func(v interface{}) bool
+// type Matches func(v interface{}) bool
 
-func (f Matches) Matches(x interface{}) bool {
-	return f(x)
-}
+// func (f Matches) Matches(x interface{}) bool {
+// 	return f(x)
+// }
 
-func (f Matches) String() string {
-	return "Matches Dismatch"
-}
+// func (f Matches) String() string {
+// 	return "Matches Dismatch"
+// }
 
 func TestNewSpanZapCore(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -142,14 +143,22 @@ func TestNewSpanLogger(t *testing.T) {
 	span := NewMockSpan(ctrl)
 	span.EXPECT().Finish().Times(1)
 	span.EXPECT().LogFields(log.String("message", "print stack trace"),
-		Matches(func(x interface{}) bool {
-			if v, ok := x.(log.Field); ok {
-				if v.Key() == "stack" {
-					return true
-				}
+		gomock.Any()).Times(1).Do(
+		func(fields ...log.Field) {
+			if len(fields) != 2 {
+				t.Fatal(fields)
 			}
-			return false
-		})).Times(1)
+			stack := fields[1]
+			if key := stack.Key(); key != "stack" {
+				t.Fatal(stack)
+			}
+			if value, ok := stack.Value().(string); !ok {
+				t.Fatal(value, ok)
+			} else if !strings.HasPrefix(
+				value, "github.com/nanjj/cub/logs_test.TestNewSpanLogger") {
+				t.Fatal(value)
+			}
+		})
 	logger := logs.NewSpanLogger(span)
 	logger = logger.With()
 	logger = logger.With(zap.Stack("stack"))
@@ -163,14 +172,21 @@ func TestWithOptions(t *testing.T) {
 	span := NewMockSpan(ctrl)
 	span.EXPECT().Finish().Times(1)
 	span.EXPECT().LogFields(log.String("message", "print caller"),
-		Matches(func(x interface{}) bool {
-			if field, ok := x.(log.Field); ok {
-				if field.Key() == "caller" {
-					return true
-				}
+		gomock.Any()).Times(1).Do(
+		func(fields ...log.Field) {
+			if len(fields) != 2 {
+				t.Fatal(fields)
 			}
-			return false
-		})).Times(1)
+			caller := fields[1]
+			if key := caller.Key(); key != "caller" {
+				t.Fatal(key)
+			}
+			if value, ok := caller.Value().(string); !ok {
+				t.Fatal(value, ok)
+			} else if !strings.HasPrefix(value, "logs/zap_test.go:") {
+				t.Fatal(value)
+			}
+		})
 	logger := logs.NewSpanLogger(span)
 	logger = logger.WithOptions()
 	logger = logger.WithOptions(zap.AddCaller())
