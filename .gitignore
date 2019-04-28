@@ -12,3 +12,4 @@
 *.out
 *.bqd
 cover.out
+coverage.txt
