@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 
 	"github.com/nanjj/cub/logs"
 	"github.com/opentracing/opentracing-go"
+	"go.uber.org/zap"
 	"nanomsg.org/go/mangos/v2"
 	"nanomsg.org/go/mangos/v2/protocol/pull"
 	"nanomsg.org/go/mangos/v2/protocol/push"
@@ -32,8 +32,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	name, listen, leader := cfg.RunnerName, cfg.RunnerListen, cfg.LeaderListen
 	tracer, closer, err := NewTracer(name, listen, leader)
 	if err != nil {
-		log.Fatal(err)
-		return
+		panic(err)
 	}
 	ctx := context.Background()
 	sp, ctx := logs.StartSpanFromContextWithTracer(ctx, tracer, "NewRunner")
@@ -54,7 +53,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		return
 	}
 	if err = RetryListen(sock, listen); err != nil {
-		log.Fatal(err)
+		sp.Error("Failed to listen", zap.Stack("stack"), zap.Error(err))
 		return
 	}
 	r.self = sock
@@ -128,7 +127,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 					dup := e.Dup()
 					dup.Receiver = tgts
 					if err = SendEvent(ctx, leader, dup); err != nil {
-						log.Println(err)
+						sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 						return
 					}
 				}
@@ -139,7 +138,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 			dup := e.Dup()
 			dup.Receiver = v
 			if err = SendEvent(ctx, member, dup); err != nil {
-				log.Println(err)
+				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 				return
 			}
 		} else {
@@ -152,11 +151,11 @@ func (r *Runner) Handle(e *Event) (err error) {
 		var rep Payload
 		if f, ok := r.actions.Get(action); ok {
 			if rep, err = f(ctx, req); err != nil {
-				log.Println(err)
+				sp.Error("Failed to run action", zap.Stack("stack"), zap.Error(err))
 			}
 		} else {
 			err = fmt.Errorf("No action found")
-			log.Println(err)
+			sp.Error("Failed to find action", zap.Stack("stack"), zap.Error(err))
 		}
 		callback := e.Callback
 		if callback != "" && err == nil {
@@ -164,7 +163,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 			ack.Receiver = e.Sender
 			ack.Payload = rep
 			if err = SendEvent(ctx, r.Leader(), &ack); err != nil {
-				log.Println(err)
+				sp.Error("Failed to send leader", zap.Stack("stack"), zap.Error(err))
 			}
 		}
 	}
@@ -173,9 +172,9 @@ func (r *Runner) Handle(e *Event) (err error) {
 
 // Ping
 func (r *Runner) Ping(ctx context.Context, req Payload) (rep Payload, err error) {
-	sp, ctx := opentracing.StartSpanFromContextWithTracer(ctx, r.tracer, fmt.Sprintf("Ping@%s", r.Name()))
+	sp, ctx := logs.StartSpanFromContext(ctx, "Ping")
 	defer sp.Finish()
-	log.Println("ping", r.Name(), req)
+	sp.Info("Ping", zap.String("name", r.Name()))
 	return
 }
 
