@@ -9,6 +9,7 @@ import (
 
 	"github.com/nanjj/cub/logs"
 	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
 	"nanomsg.org/go/mangos/v2"
 	"nanomsg.org/go/mangos/v2/protocol/pull"
@@ -30,7 +31,9 @@ type Runner struct {
 
 func NewRunner(cfg *Config) (r *Runner, err error) {
 	name, listen, leader := cfg.RunnerName, cfg.RunnerListen, cfg.LeaderListen
-	tracer, closer, err := NewTracer(name, listen, leader)
+	tracer, closer, err := logs.NewTracer(name,
+		config.Tag("runner", listen),
+		config.Tag("leader", leader))
 	if err != nil {
 		panic(err)
 	}
@@ -124,7 +127,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 					}
 				}
 				if len(tgts) != 0 {
-					dup := e.Dup()
+					dup := e.Clone()
 					dup.Receiver = tgts
 					if err = SendEvent(ctx, leader, dup); err != nil {
 						sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
@@ -135,7 +138,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 			continue
 		}
 		if member, ok := r.members.Get(k); ok {
-			dup := e.Dup()
+			dup := e.Clone()
 			dup.Receiver = v
 			if err = SendEvent(ctx, member, dup); err != nil {
 				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))

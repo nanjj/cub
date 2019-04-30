@@ -39,7 +39,7 @@ func (d DataObject) Decode(i interface{}) (err error) {
 	return
 }
 
-func (d DataObject) Dup() (dup DataObject) {
+func (d DataObject) Clone() (dup DataObject) {
 	if d == nil {
 		return
 	}

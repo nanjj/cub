@@ -2,12 +2,8 @@ package sca
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"os"
-
-	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go/config"
 )
 
 const (
@@ -114,27 +110,5 @@ func runnerName() (name string) {
 		name = runnerIp()
 		os.Setenv(envRunnerName, name)
 	}
-	return
-}
-
-// NewTracer - returns a new tracer
-func NewTracer(name, runner, leader string) (tracer opentracing.Tracer, closer io.Closer, err error) {
-	c, err := config.FromEnv()
-	if err != nil {
-		return
-	}
-	if name != "" {
-		c.ServiceName = name
-	}
-	if runner != "" && leader != "" {
-		tags := map[string]string{
-			"runner": runner,
-			"leader": leader,
-		}
-		for k, v := range tags {
-			c.Tags = append(c.Tags, opentracing.Tag{k, v})
-		}
-	}
-	tracer, closer, err = c.NewTracer()
 	return
 }
