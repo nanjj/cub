@@ -26,8 +26,8 @@ func (targets *Targets) ToLocal() {
 	*targets = nil
 }
 
-// Dup
-func (t Targets) Dup() (dup Targets) {
+// Clone
+func (t Targets) Clone() (dup Targets) {
 	if t == nil {
 		return
 	}

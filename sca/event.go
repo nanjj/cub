@@ -1,27 +1,27 @@
 package sca
 
-func (h Head) Dup() (dup Head) {
+func (h Head) Clone() (dup Head) {
 	dup = Head{
 		Id:       h.Id,
-		Receiver: h.Receiver.Dup(),
-		Sender:   h.Sender.Dup(),
+		Receiver: h.Receiver.Clone(),
+		Sender:   h.Sender.Clone(),
 	}
 	return
 }
 
-func (e *Event) Dup() (dup *Event) {
+func (e *Event) Clone() (dup *Event) {
 	if e == nil {
 		return
 	}
 	dup = &Event{
-		Head:     e.Head.Dup(),
+		Head:     e.Head.Clone(),
 		Action:   e.Action,
 		Callback: e.Callback,
 	}
 	l := len(e.Payload)
 	payload := make([]DataObject, l)
 	for i := 0; i < l; i++ {
-		payload[i] = e.Payload[i].Dup()
+		payload[i] = e.Payload[i].Clone()
 	}
 	dup.Payload = payload
 	carrier := map[string]string{}
