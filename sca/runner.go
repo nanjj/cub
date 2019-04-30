@@ -39,6 +39,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	}
 	ctx := context.Background()
 	sp, ctx := logs.StartSpanFromContextWithTracer(ctx, tracer, "NewRunner")
+	defer sp.Finish()
 	r = &Runner{
 		name:    name,
 		listen:  listen,
