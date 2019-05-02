@@ -22,9 +22,8 @@ type Runner struct {
 	listen  string
 	leader  mangos.Socket
 	self    mangos.Socket
-	members *Members
 	actions *Actions
-	routes  *Routes
+	rms     *Rms
 	tracer  opentracing.Tracer
 	closers []io.Closer
 }
@@ -43,9 +42,8 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	r = &Runner{
 		name:    name,
 		listen:  listen,
-		members: &Members{},
 		actions: &Actions{},
-		routes:  &Routes{},
+		rms:  &Rms{},
 		closers: []io.Closer{closer},
 		tracer:  tracer,
 	}
@@ -107,11 +105,11 @@ func (r *Runner) Handle(e *Event) (err error) {
 		local = true
 	} else if targets.All() {
 		local = true
-		for _, k := range r.members.Names() {
+		for _, k := range r.rms.Members() {
 			vias[k] = targets
 		}
 	} else {
-		vias = r.routes.Dispatch(targets)
+		vias = r.rms.Dispatch(targets)
 	}
 	for k, v := range vias {
 		if k == "" {
@@ -138,7 +136,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 			}
 			continue
 		}
-		if member, ok := r.members.Get(k); ok {
+		if member, ok := r.rms.GetMember(k); ok {
 			dup := e.Clone()
 			dup.Receiver = v
 			if err = SendEvent(ctx, member, dup); err != nil {
@@ -195,7 +193,7 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 	name := string(req[0])
 	listen := string(req[1])
 	// add new member
-	sock, ok := r.members.Get(name)
+	sock, ok := r.rms.GetMember(name)
 	if ok && listen != "" {
 		sock.Close()
 		sock = nil
@@ -209,13 +207,13 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 			sp.Error(err.Error())
 			return
 		}
-		r.members.Add(name, sock)
+		r.rms.AddMember(name, sock)
 	}
 
 	// update routes
 	for i := 2; i < l; i++ {
 		target := string(req[i])
-		r.routes.Add(target, name)
+		r.rms.AddRoute(target, name)
 	}
 	// tell leader
 	if leader := r.leader; leader != nil {
@@ -234,21 +232,12 @@ func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error)
 }
 
 func (r *Runner) Members() (members []string) {
-	members = r.members.Names()
+	members = r.rms.Members()
 	return
 }
 
 func (r *Runner) Routes() (routes map[string]string) {
-	routes = map[string]string{}
-	f := func(k, v interface{}) bool {
-		if key, ok := k.(string); ok {
-			if value, ok := v.(string); ok {
-				routes[key] = value
-			}
-		}
-		return true
-	}
-	r.routes.Range(f)
+	routes = r.rms.Routes()
 	return
 }
 
@@ -265,7 +254,7 @@ func (r *Runner) Self() mangos.Socket {
 }
 
 func (r *Runner) Member(name string) mangos.Socket {
-	if sock, ok := r.members.Get(name); ok {
+	if sock, ok := r.rms.GetMember(name); ok {
 		return sock
 	}
 	return nil

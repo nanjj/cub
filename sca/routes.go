@@ -2,18 +2,21 @@ package sca
 
 import (
 	"sync"
+
+	"nanomsg.org/go/mangos/v2"
 )
 
-type Routes struct {
-	sync.Map
+type Rms struct {
+	r sync.Map
+	m sync.Map
 }
 
-func (r *Routes) Add(target, via string) {
-	r.Store(target, via)
+func (r *Rms) AddRoute(target, via string) {
+	r.r.Store(target, via)
 }
 
-func (r *Routes) Get(target string) (via string) {
-	if v, ok := r.Load(target); ok {
+func (r *Rms) GetRoute(target string) (via string) {
+	if v, ok := r.r.Load(target); ok {
 		if via, ok = v.(string); ok {
 			return
 		}
@@ -21,10 +24,51 @@ func (r *Routes) Get(target string) (via string) {
 	return
 }
 
-func (r *Routes) Dispatch(targets Targets) (vias map[string]Targets) {
+func (r *Rms) DelRoute(target string) {
+	r.r.Delete(target)
+}
+
+func (r *Rms) Routes() (routes map[string]string) {
+	routes = map[string]string{}
+	f := func(k, v interface{}) bool {
+		if key, ok := k.(string); ok {
+			if value, ok := v.(string); ok {
+				routes[key] = value
+			}
+		}
+		return true
+	}
+	r.r.Range(f)
+	return
+}
+
+func (r *Rms) AddMember(name string, sock mangos.Socket) {
+	r.m.Store(name, sock)
+}
+
+func (r *Rms) GetMember(name string) (sock mangos.Socket, ok bool) {
+	v, ok := r.m.Load(name)
+	if ok {
+		sock, ok = v.(mangos.Socket)
+	}
+	return
+}
+
+func (r *Rms) Members() (names []string) {
+	names = []string{}
+	r.m.Range(func(k, v interface{}) bool {
+		if name, ok := k.(string); ok {
+			names = append(names, name)
+		}
+		return true
+	})
+	return
+}
+
+func (r *Rms) Dispatch(targets Targets) (vias map[string]Targets) {
 	vias = map[string]Targets{}
 	for _, target := range targets {
-		via := r.Get(target)
+		via := r.GetRoute(target)
 		if ss, ok := vias[via]; ok {
 			ss = append(ss, target)
 			vias[via] = ss
