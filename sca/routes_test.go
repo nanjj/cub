@@ -16,12 +16,12 @@ func TestRoutesRace(t *testing.T) {
 		"r5": "r2",
 	}
 	var g errgroup.Group
-	routes := &sca.Routes{}
+	routes := &sca.Rms{}
 	// Add
 	g.Go(func() error {
 		for i := 0; i < 100; i++ {
 			for k, v := range data {
-				routes.Add(k, v)
+				routes.AddRoute(k, v)
 			}
 		}
 		return nil
@@ -30,7 +30,7 @@ func TestRoutesRace(t *testing.T) {
 	g.Go(func() error {
 		for i := 0; i < 100; i++ {
 			for k, v := range data {
-				if via := routes.Get(k); via != "" && via != v {
+				if via := routes.GetRoute(k); via != "" && via != v {
 					t.Fatal(via, v)
 				}
 			}
@@ -41,7 +41,7 @@ func TestRoutesRace(t *testing.T) {
 	g.Go(func() error {
 		for i := 0; i < 100; i++ {
 			for k := range data {
-				routes.Delete(k)
+				routes.DelRoute(k)
 			}
 		}
 		return nil
@@ -64,9 +64,9 @@ func TestRoutesDispatch(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			r := &sca.Routes{}
+			r := &sca.Rms{}
 			for k, v := range tc.data {
-				r.Add(k, v)
+				r.AddRoute(k, v)
 			}
 			if tc.vias == nil {
 				tc.vias = map[string]sca.Targets{}
