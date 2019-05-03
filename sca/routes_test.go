@@ -51,7 +51,7 @@ func TestRoutesRace(t *testing.T) {
 func TestRoutesDispatch(t *testing.T) {
 	tcs := []struct {
 		data    map[string]string
-		targets []string
+		targets sca.Targets
 		vias    map[string]sca.Targets
 	}{
 		{},
