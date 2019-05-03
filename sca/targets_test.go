@@ -8,15 +8,15 @@ import (
 
 func TestTargetsToAll(t *testing.T) {
 	toall := sca.Targets([]string{})
-	if !toall.All() {
+	if !toall.Down() {
 		t.Fatal(toall)
 	}
 	toall.ToLocal()
 	if !toall.Local() {
 		t.Fatal(toall)
 	}
-	toall.ToAll()
-	if !toall.All() {
+	toall.ToDown()
+	if !toall.Down() {
 		t.Fatal(toall)
 	}
 }

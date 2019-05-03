@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/nanjj/cub/logs"
 	"github.com/opentracing/opentracing-go"
@@ -43,7 +44,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		name:    name,
 		listen:  listen,
 		actions: &Actions{},
-		rms:  &Rms{},
+		rms:     &Rms{},
 		closers: []io.Closer{closer},
 		tracer:  tracer,
 	}
@@ -103,7 +104,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 	vias := map[string]Targets{}
 	if targets.Local() {
 		local = true
-	} else if targets.All() {
+	} else if targets.Down() {
 		local = true
 		for _, k := range r.rms.Members() {
 			vias[k] = targets
@@ -113,7 +114,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 	}
 	for k, v := range vias {
 		if k == "" {
-			if leader := r.Leader(); leader == nil {
+			if leader := r.leader; leader == nil {
 				local = true
 				continue
 			} else {
@@ -177,6 +178,11 @@ func (r *Runner) Ping(ctx context.Context, req Payload) (rep Payload, err error)
 	sp, ctx := logs.StartSpanFromContext(ctx, "Ping")
 	defer sp.Finish()
 	sp.Info("Ping", zap.String("name", r.Name()))
+	t := DataObject{}
+	err = t.Encode(time.Now().UTC())
+	if err == nil {
+		rep = Payload{DataObject(r.Name()), t}
+	}
 	return
 }
 
