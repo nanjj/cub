@@ -44,7 +44,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		name:    name,
 		listen:  listen,
 		actions: &Actions{},
-		rms:     &Rms{},
+		rms:     &Rms{Name: name},
 		closers: []io.Closer{closer},
 		tracer:  tracer,
 	}
@@ -99,47 +99,27 @@ func (r *Runner) Handle(e *Event) (err error) {
 	tracer := r.Tracer()
 	sp, ctx := logs.StartSpanFromCarrier(e.Carrier, tracer, "Recv")
 	defer sp.Finish()
-	local := false
+	// local := false
 	targets := e.Receiver
-	vias := map[string]Targets{}
-	if targets.Local() {
-		local = true
-	} else if targets.Down() {
-		local = true
-		for _, k := range r.rms.Members() {
-			vias[k] = targets
-		}
-	} else {
-		vias = r.rms.Dispatch(targets)
-	}
-	for k, v := range vias {
-		if k == "" {
-			if leader := r.leader; leader == nil {
-				local = true
-				continue
-			} else {
-				var tgts Targets
-				for _, tgt := range v {
-					if string(tgt) != r.Name() {
-						tgts = append(tgts, tgt)
-					} else {
-						local = true
-					}
-				}
-				if len(tgts) != 0 {
-					dup := e.Clone()
-					dup.Receiver = tgts
-					if err = SendEvent(ctx, leader, dup); err != nil {
-						sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
-						return
-					}
-				}
-			}
-			continue
-		}
-		if member, ok := r.rms.GetMember(k); ok {
+	local, ups, vias := r.rms.Dispatch(targets)
+	if len(ups) != 0 {
+		if leader := r.leader; leader != nil {
 			dup := e.Clone()
-			dup.Receiver = v
+			dup.Receiver = ups
+			if err = SendEvent(ctx, leader, dup); err != nil {
+				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
+				return
+			}
+		} else {
+			local = true
+		}
+	}
+
+	// forward to members
+	for via, downs := range vias {
+		if member, ok := r.rms.GetMember(via); ok {
+			dup := e.Clone()
+			dup.Receiver = downs
 			if err = SendEvent(ctx, member, dup); err != nil {
 				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 				return
@@ -148,6 +128,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 			return
 		}
 	}
+
 	if local { // handle local
 		action := e.Action
 		req := e.Payload

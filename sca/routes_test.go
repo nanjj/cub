@@ -50,31 +50,47 @@ func TestRoutesRace(t *testing.T) {
 
 func TestRoutesDispatch(t *testing.T) {
 	tcs := []struct {
+		name    string
 		data    map[string]string
 		targets sca.Targets
+		local   bool
+		ups     sca.Targets
 		vias    map[string]sca.Targets
 	}{
-		{},
-		{map[string]string{}, []string{}, map[string]sca.Targets{}},
-		{map[string]string{"a": "b"}, []string{"a"}, map[string]sca.Targets{"b": []string{"a"}}},
-		{map[string]string{"a": "b", "c": "d"}, []string{"a", "c"}, map[string]sca.Targets{"b": []string{"a"}, "d": []string{"c"}}},
-		{map[string]string{"a": "b", "c": "b"}, []string{"a", "c"}, map[string]sca.Targets{"b": []string{"a", "c"}}},
-		{map[string]string{"a": "b", "c": "b"}, []string{"a", "c", "e"}, map[string]sca.Targets{"b": {"a", "c"}, "": {"e"}}},
+		{"me", nil, nil, true, nil, nil},
+		{"me", nil, []string{"me"}, true, nil, nil},
+		{"me", map[string]string{}, []string{}, true, nil, nil},
+		{"me", map[string]string{"a": "b"}, []string{}, true, nil, map[string]sca.Targets{"b": []string{}}},
+		{"me", map[string]string{"a": "b"}, []string{""}, false, []string{""}, nil},
+		{"me", map[string]string{"a": "b"}, []string{"", "me", "a"}, true, []string{""}, map[string]sca.Targets{"b": []string{"a"}}},
+		{"me", map[string]string{"a": "b", "c": "d"}, []string{}, true, nil, map[string]sca.Targets{"b": []string{}, "d": []string{}}},
+		{"me", map[string]string{"a": "b"}, []string{"a"}, false, nil, map[string]sca.Targets{"b": []string{"a"}}},
+		{"me", map[string]string{"a": "b"}, []string{"a", "me"}, true, nil, map[string]sca.Targets{"b": []string{"a"}}},
+		{"me", map[string]string{"a": "b", "c": "d"}, []string{"a", "c"}, false, nil, map[string]sca.Targets{"b": []string{"a"}, "d": []string{"c"}}},
+		{"me", map[string]string{"a": "b", "c": "b"}, []string{"a", "c"}, false, nil, map[string]sca.Targets{"b": []string{"a", "c"}}},
+		{"me", map[string]string{"a": "b", "c": "b"}, []string{"a", "c", "e"}, false, []string{"e"}, map[string]sca.Targets{"b": {"a", "c"}}},
 	}
 
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			r := &sca.Rms{}
+			r := &sca.Rms{Name: tc.name}
 			for k, v := range tc.data {
 				r.AddRoute(k, v)
+				r.AddMember(v, nil)
 			}
 			if tc.vias == nil {
 				tc.vias = map[string]sca.Targets{}
 			}
 			targets := tc.targets
-			vias := r.Dispatch(targets)
+			local, ups, vias := r.Dispatch(targets)
+			if local != tc.local {
+				t.Fatal(local, tc.local)
+			}
+			if !reflect.DeepEqual(ups, tc.ups) {
+				t.Fatal(ups, tc.ups)
+			}
 			if !reflect.DeepEqual(vias, tc.vias) {
-				t.Fatal(vias, tc.vias)
+				t.Fatal(targets, vias, tc.vias)
 			}
 		})
 	}

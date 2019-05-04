@@ -1,6 +1,7 @@
 package sca_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/nanjj/cub/sca"
@@ -19,4 +20,9 @@ func TestTargetsToAll(t *testing.T) {
 	if !toall.Down() {
 		t.Fatal(toall)
 	}
+}
+
+func TestTargetsDeepEqual(t *testing.T) {
+	t.Log(reflect.DeepEqual([]string{}, []string{}))
+	t.Log(reflect.DeepEqual(map[string]sca.Targets{"": []string{}}, map[string]sca.Targets{"": []string{}}))
 }
