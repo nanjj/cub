@@ -7,8 +7,9 @@ import (
 )
 
 type Rms struct {
-	r sync.Map
-	m sync.Map
+	Name string
+	r    sync.Map
+	m    sync.Map
 }
 
 func (r *Rms) AddRoute(target, via string) {
@@ -65,15 +66,36 @@ func (r *Rms) Members() (names []string) {
 	return
 }
 
-func (r *Rms) Dispatch(targets Targets) (vias map[string]Targets) {
+func (r *Rms) Dispatch(targets Targets) (local bool, ups Targets, vias map[string]Targets) {
 	vias = map[string]Targets{}
+	if targets.Local() {
+		local = true
+		return
+	}
+
+	if targets.Down() {
+		local = true
+		for _, member := range r.Members() {
+			vias[member] = targets
+		}
+		return
+	}
+
 	for _, target := range targets {
 		via := r.GetRoute(target)
-		if ss, ok := vias[via]; ok {
-			ss = append(ss, target)
-			vias[via] = ss
+		if via == "" {
+			if target == r.Name {
+				local = true
+			} else {
+				ups = append(ups, target)
+			}
 		} else {
-			vias[via] = []string{target}
+			if ss, ok := vias[via]; ok {
+				ss = append(ss, target)
+				vias[via] = ss
+			} else {
+				vias[via] = []string{target}
+			}
 		}
 	}
 	return
