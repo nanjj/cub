@@ -6,27 +6,30 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/nanjj/cub/logs"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"nanomsg.org/go/mangos/v2"
-	"nanomsg.org/go/mangos/v2/protocol/pull"
-	"nanomsg.org/go/mangos/v2/protocol/push"
 	_ "nanomsg.org/go/mangos/v2/transport/all"
 )
 
+const (
+	ROOT   = "root"
+	LEAF   = "leaf"
+	BRANCH = "branch"
+)
+
 type Runner struct {
-	name    string
-	listen  string
-	leader  mangos.Socket
-	self    mangos.Socket
+	leader  *Node
+	self    *Node
 	actions *Actions
 	rms     *Rms
 	tracer  opentracing.Tracer
 	closers []io.Closer
+	g       errgroup.Group
 }
 
 func NewRunner(cfg *Config) (r *Runner, err error) {
@@ -41,8 +44,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	sp, ctx := logs.StartSpanFromContextWithTracer(ctx, tracer, "NewRunner")
 	defer sp.Finish()
 	r = &Runner{
-		name:    name,
-		listen:  listen,
+		self:    &Node{Name: name, Listen: listen},
 		actions: &Actions{},
 		rms:     &Rms{Name: name},
 		closers: []io.Closer{closer},
@@ -52,77 +54,82 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	r.AddAction("join", r.rms.Join)
 	r.AddAction("route", r.Route)
 	r.AddAction("ping", r.Ping)
-	sock, err := pull.NewSocket()
+	sock, err := NewServer(listen)
 	if err != nil {
-		return
-	}
-	if err = RetryListen(sock, listen); err != nil {
 		sp.Error("Failed to listen", zap.Stack("stack"), zap.Error(err))
 		return
 	}
-	r.self = sock
+	r.self.Server = sock
+	r.g.Go(r.run)
 	if leader != "" {
-		if sock, err = push.NewSocket(); err != nil {
-			sp.Fatal(err.Error())
+		if sock, err = NewClient(leader); err != nil {
+			sp.Error("Failed to dial leader", zap.Stack("stack"), zap.Error(err))
 			return
 		}
-		if err = RetryDial(sock, leader); err != nil {
-			sp.Fatal(err.Error())
-			return
-		}
+		// Join
 		if err = SendEvent(ctx, sock,
 			&Event{
 				Action: "join",
 				Payload: Payload{
-					DataObject(name), DataObject(listen), DataObject(name)},
+					DataObject(name), DataObject(listen)},
+				From: name,
 			}); err != nil {
-			sp.Error(err.Error())
+			sp.Error("failed to join", zap.Stack("stack"), zap.Error(err))
 			return
 		}
+		//Add route
 		if err = SendEvent(ctx, sock,
 			&Event{
 				Action: "route",
 				Payload: Payload{
 					DataObject(name), DataObject(name)},
+				From: name,
 			}); err != nil {
 			sp.Error(err.Error())
 			return
 		}
-		r.leader = sock
+		r.leader = &Node{Listen: listen, Client: sock}
 	}
 	return
 }
 
-func (r *Runner) Run() (err error) {
+func (r *Runner) run() (err error) {
 	for {
 		e := &Event{}
-		if err = RecvEvent(context.Background(), r.self, e); err != nil {
+		if err = RecvEvent(context.Background(), r.self.Server, e); err != nil {
 			continue
 		}
-		if err = r.Handle(e); err != nil {
+		sp, ctx := logs.StartSpanFromCarrier(e.Carrier, r.Tracer(), "Recv")
+		if err = r.Handle(ctx, e); err != nil {
+			sp.Finish()
 			continue
 		}
+		sp.Finish()
 	}
 	return
 }
 
-func (r *Runner) Handle(e *Event) (err error) {
-	tracer := r.Tracer()
-	sp, ctx := logs.StartSpanFromCarrier(e.Carrier, tracer, "Recv")
+func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
+	sp, ctx := logs.StartSpanFromContext(ctx, "Handle")
 	defer sp.Finish()
-	// local := false
-	targets := e.Receiver
+	targets := e.To
 	local, ups, vias := r.rms.Dispatch(targets)
-	if len(ups) != 0 {
+	if l := len(ups); l != 0 {
 		if leader := r.leader; leader != nil {
 			dup := e.Clone()
-			dup.Receiver = ups
-			if err = SendEvent(ctx, leader, dup); err != nil {
+			dup.To = ups
+			if err = SendEvent(ctx, leader.Client, dup); err != nil {
 				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 				return
 			}
 		} else {
-			local = true
+			if l == 1 && ups[0] == "" {
+				local = true
+			} else {
+				err = fmt.Errorf("targets %v not found", ups)
+				sp.Error("targets not found", zap.Stack("stack"), zap.Error(err))
+				return
+			}
 		}
 	}
 
@@ -130,7 +137,7 @@ func (r *Runner) Handle(e *Event) (err error) {
 	for via, downs := range vias {
 		if member, ok := r.rms.GetMember(via); ok {
 			dup := e.Clone()
-			dup.Receiver = downs
+			dup.To = downs
 			if err = SendEvent(ctx, member, dup); err != nil {
 				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 				return
@@ -154,26 +161,14 @@ func (r *Runner) Handle(e *Event) (err error) {
 		}
 		callback := e.Callback
 		if callback != "" && err == nil {
-			ack := Event{Action: callback}
-			ack.Receiver = e.Sender
+			ack := &Event{Carrier: e.Carrier, Action: callback}
+			ack.To = Targets{e.From}
+			ack.From = r.Name()
 			ack.Payload = rep
-			if err = SendEvent(ctx, r.Leader(), &ack); err != nil {
+			if err = r.Handle(ctx, ack); err != nil {
 				sp.Error("Failed to send leader", zap.Stack("stack"), zap.Error(err))
 			}
 		}
-	}
-	return
-}
-
-// Ping
-func (r *Runner) Ping(ctx context.Context, req Payload) (rep Payload, err error) {
-	sp, ctx := logs.StartSpanFromContext(ctx, "Ping")
-	defer sp.Finish()
-	sp.Info("Ping", zap.String("name", r.Name()))
-	t := DataObject{}
-	err = t.Encode(time.Now().UTC())
-	if err == nil {
-		rep = Payload{DataObject(r.Name()), t}
 	}
 	return
 }
@@ -188,10 +183,15 @@ func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error
 		target := string(req[i])
 		r.rms.AddRoute(target, name)
 	}
+	name = r.self.Name
+	rep = Payload{
+		DataObject(name),
+		DataObject(r.NodeType()),
+	}
 	// tell leader
 	if leader := r.leader; leader != nil {
-		req[0] = DataObject(r.name)
-		if err = SendEvent(ctx, leader, &Event{
+		req[0] = DataObject(name)
+		if err = SendEvent(ctx, leader.Client, &Event{
 			Action:  "route",
 			Payload: req,
 		}); err != nil {
@@ -202,7 +202,7 @@ func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error
 	return
 }
 
-func (r *Runner) Members() (members []string) {
+func (r *Runner) Members() (members Set) {
 	members = r.rms.Members()
 	return
 }
@@ -216,12 +216,23 @@ func (r *Runner) AddAction(name string, action Action) {
 	r.actions.Add(name, action)
 }
 
-func (r *Runner) Leader() mangos.Socket {
-	return r.leader
+func (r *Runner) AddCallback(action Action) (name string) {
+	return r.actions.New(action)
+}
+
+func (r *Runner) RemoveAction(name string) {
+	r.actions.Delete(name)
+}
+
+func (r *Runner) Leader() (leader mangos.Socket) {
+	if r.leader != nil {
+		leader = r.leader.Client
+	}
+	return
 }
 
 func (r *Runner) Self() mangos.Socket {
-	return r.self
+	return r.self.Server
 }
 
 func (r *Runner) Member(name string) mangos.Socket {
@@ -237,7 +248,7 @@ func (r *Runner) Close() (err error) {
 		r.Self(),
 		r.Leader(),
 	}
-	for _, m := range r.Members() {
+	for m := range r.Members() {
 		closers = append(closers, r.Member(m))
 	}
 	closers = append(closers, r.closers...)
@@ -255,6 +266,20 @@ func (r *Runner) Close() (err error) {
 	return
 }
 
-func (r *Runner) Name() string { return r.name }
+func (r *Runner) Name() string { return r.self.Name }
 
 func (r *Runner) Tracer() opentracing.Tracer { return r.tracer }
+
+func (r *Runner) Wait() error {
+	return r.g.Wait()
+}
+
+func (r *Runner) NodeType() string {
+	if r.leader == nil {
+		return ROOT
+	} else if r.rms.HasMember() {
+		return BRANCH
+	} else {
+		return LEAF
+	}
+}

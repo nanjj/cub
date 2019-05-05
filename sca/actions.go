@@ -2,12 +2,19 @@ package sca
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"sort"
 	"sync"
+	"time"
 )
 
 type Action func(context.Context, Payload) (Payload, error)
 type Actions struct{ sync.Map }
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 func (m *Actions) Get(name string) (a Action, ok bool) {
 	v, ok := m.Load(name)
@@ -22,6 +29,16 @@ func (m *Actions) Get(name string) (a Action, ok bool) {
 func (m *Actions) Add(name string, action Action) {
 	if action != nil {
 		m.Store(name, action)
+	}
+}
+
+func (m *Actions) New(action Action) (name string) {
+	for {
+		name = fmt.Sprintf("cb-%05d", rand.Intn(99999))
+		if _, ok := m.Get(name); !ok {
+			m.Add(name, action)
+			return
+		}
 	}
 }
 

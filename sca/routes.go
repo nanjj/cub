@@ -59,13 +59,21 @@ func (r *Rms) GetMember(name string) (sock mangos.Socket, ok bool) {
 	return
 }
 
-func (r *Rms) Members() (names []string) {
-	names = []string{}
+func (r *Rms) Members() (names Set) {
+	names = NewSet()
 	r.m.Range(func(k, v interface{}) bool {
 		if name, ok := k.(string); ok {
-			names = append(names, name)
+			names.Add(name)
 		}
 		return true
+	})
+	return
+}
+
+func (r *Rms) HasMember() (ok bool) {
+	r.m.Range(func(k, v interface{}) bool {
+		ok = true
+		return false
 	})
 	return
 }
@@ -79,7 +87,7 @@ func (r *Rms) Dispatch(targets Targets) (local bool, ups Targets, vias map[strin
 
 	if targets.Down() {
 		local = true
-		for _, member := range r.Members() {
+		for member := range r.Members() {
 			vias[member] = targets
 		}
 		return
@@ -109,10 +117,9 @@ func (r *Rms) Dispatch(targets Targets) (local bool, ups Targets, vias map[strin
 func (r *Rms) Join(ctx context.Context, req Payload) (rep Payload, err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Join")
 	defer sp.Finish()
-	l := len(req)
-	if l < 3 {
+	if len(req) < 2 {
+		sp.Error("Bad request")
 		err = fmt.Errorf("bad request")
-		sp.Error(err.Error())
 		return
 	}
 	name := string(req[0])
