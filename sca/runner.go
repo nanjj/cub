@@ -49,7 +49,8 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		tracer:  tracer,
 	}
 	r.closers = append(r.closers, closer)
-	r.AddAction("join", r.Join)
+	r.AddAction("join", r.rms.Join)
+	r.AddAction("route", r.Route)
 	r.AddAction("ping", r.Ping)
 	sock, err := pull.NewSocket()
 	if err != nil {
@@ -69,11 +70,21 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 			sp.Fatal(err.Error())
 			return
 		}
-		e := &Event{
-			Action:  "join",
-			Payload: Payload{DataObject(name), DataObject(listen), DataObject(name)},
+		if err = SendEvent(ctx, sock,
+			&Event{
+				Action: "join",
+				Payload: Payload{
+					DataObject(name), DataObject(listen), DataObject(name)},
+			}); err != nil {
+			sp.Error(err.Error())
+			return
 		}
-		if err = SendEvent(ctx, sock, e); err != nil {
+		if err = SendEvent(ctx, sock,
+			&Event{
+				Action: "route",
+				Payload: Payload{
+					DataObject(name), DataObject(name)},
+			}); err != nil {
 			sp.Error(err.Error())
 			return
 		}
@@ -167,50 +178,23 @@ func (r *Runner) Ping(ctx context.Context, req Payload) (rep Payload, err error)
 	return
 }
 
-// name,listen, members...
-func (r *Runner) Join(ctx context.Context, req Payload) (rep Payload, err error) {
-	sp, ctx := logs.StartSpanFromContext(ctx, "Join")
+func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error) {
+	sp, ctx := logs.StartSpanFromContext(ctx, "Route")
 	defer sp.Finish()
-	l := len(req)
-	if l < 3 {
-		err = fmt.Errorf("bad request")
-		sp.Error(err.Error())
-		return
-	}
 	name := string(req[0])
-	listen := string(req[1])
-	// add new member
-	sock, ok := r.rms.GetMember(name)
-	if ok && listen != "" {
-		sock.Close()
-		sock = nil
-	}
-	if sock == nil {
-		if sock, err = push.NewSocket(); err != nil {
-			sp.Error(err.Error())
-			return
-		}
-		if err = RetryDial(sock, listen); err != nil {
-			sp.Error(err.Error())
-			return
-		}
-		r.rms.AddMember(name, sock)
-	}
-
+	l := len(req)
 	// update routes
-	for i := 2; i < l; i++ {
+	for i := 1; i < l; i++ {
 		target := string(req[i])
 		r.rms.AddRoute(target, name)
 	}
 	// tell leader
 	if leader := r.leader; leader != nil {
 		req[0] = DataObject(r.name)
-		req[1] = DataObject("")
-		e := &Event{
-			Action:  "join",
+		if err = SendEvent(ctx, leader, &Event{
+			Action:  "route",
 			Payload: req,
-		}
-		if err = SendEvent(ctx, leader, e); err != nil {
+		}); err != nil {
 			sp.Error(err.Error())
 			return
 		}

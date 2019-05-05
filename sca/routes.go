@@ -1,9 +1,13 @@
 package sca
 
 import (
+	"context"
+	"fmt"
 	"sync"
 
+	"github.com/nanjj/cub/logs"
 	"nanomsg.org/go/mangos/v2"
+	"nanomsg.org/go/mangos/v2/protocol/push"
 )
 
 type Rms struct {
@@ -97,6 +101,38 @@ func (r *Rms) Dispatch(targets Targets) (local bool, ups Targets, vias map[strin
 				vias[via] = []string{target}
 			}
 		}
+	}
+	return
+}
+
+// name,listen, members...
+func (r *Rms) Join(ctx context.Context, req Payload) (rep Payload, err error) {
+	sp, ctx := logs.StartSpanFromContext(ctx, "Join")
+	defer sp.Finish()
+	l := len(req)
+	if l < 3 {
+		err = fmt.Errorf("bad request")
+		sp.Error(err.Error())
+		return
+	}
+	name := string(req[0])
+	listen := string(req[1])
+	// add new member
+	sock, ok := r.GetMember(name)
+	if ok && listen != "" {
+		sock.Close()
+		sock = nil
+	}
+	if sock == nil {
+		if sock, err = push.NewSocket(); err != nil {
+			sp.Error(err.Error())
+			return
+		}
+		if err = RetryDial(sock, listen); err != nil {
+			sp.Error(err.Error())
+			return
+		}
+		r.AddMember(name, sock)
 	}
 	return
 }

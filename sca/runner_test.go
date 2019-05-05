@@ -124,7 +124,7 @@ func TestRunnerJoin(t *testing.T) {
 	//
 	checkRoutes := func(r *sca.Runner, want map[string]string) {
 		if routes := r.Routes(); !reflect.DeepEqual(want, routes) {
-			t.Fatal(r.Name(), routes)
+			t.Fatal(r.Name(), routes, want)
 		}
 	}
 	checkRoutes(r11, map[string]string{
