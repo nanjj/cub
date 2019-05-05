@@ -7,6 +7,8 @@ import (
 	"github.com/ugorji/go/codec"
 	"go.uber.org/zap"
 	"nanomsg.org/go/mangos/v2"
+	"nanomsg.org/go/mangos/v2/protocol/pull"
+	"nanomsg.org/go/mangos/v2/protocol/push"
 )
 
 func SendEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
@@ -44,4 +46,23 @@ func RecvEvent(ctx context.Context, sock mangos.Socket, e *Event) (err error) {
 		return
 	}
 	return
+}
+
+func NewClient(listen string) (sock mangos.Socket, err error) {
+	sock, err = push.NewSocket()
+	if err != nil {
+		return
+	}
+	err = RetryDial(sock, listen)
+	return
+}
+
+func NewServer(listen string) (sock mangos.Socket, err error) {
+	sock, err = pull.NewSocket()
+	if err != nil {
+		return
+	}
+	err = RetryListen(sock, listen)
+	return
+
 }

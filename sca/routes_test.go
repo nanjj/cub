@@ -95,3 +95,28 @@ func TestRoutesDispatch(t *testing.T) {
 		})
 	}
 }
+
+func TestRmsHasMember(t *testing.T) {
+	type T struct {
+		data map[string]string
+		want bool
+	}
+	tcs := map[string]T{
+		"1": T{},
+		"2": T{map[string]string{}, false},
+		"3": T{map[string]string{"a": "b"}, true},
+		"4": T{map[string]string{"a": "b", "c": "d"}, true},
+	}
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			rms := sca.Rms{}
+			for k, v := range tc.data {
+				rms.AddRoute(k, v)
+				rms.AddMember(v, nil)
+			}
+			if want := rms.HasMember(); want != tc.want {
+				t.Fatal(want, tc)
+			}
+		})
+	}
+}

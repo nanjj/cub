@@ -6,14 +6,10 @@ type Targets []string
 type DataObject []byte
 type Payload []DataObject
 
-type Head struct {
-	Id       int64   `codec:"id"`
-	Receiver Targets `codec:"receiver"`
-	Sender   Targets `codec:"sender"`
-}
-
 type Event struct {
-	Head
+	Id       int64             `codec:"id"`
+	To       Targets           `codec:"to"`
+	From     string            `codec:"from"`
 	Action   string            `codec:"action"`
 	Carrier  map[string]string `codec:"carrier"`
 	Payload  Payload           `codec:"payload"`

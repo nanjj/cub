@@ -50,3 +50,11 @@ func TestActions(t *testing.T) {
 
 	}
 }
+
+func TestActionsNew(t *testing.T) {
+	actions := sca.Actions{}
+	name := actions.New(nil)
+	if len(name) != 8 {
+		t.Fatal(name)
+	}
+}

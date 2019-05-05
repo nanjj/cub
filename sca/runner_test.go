@@ -3,14 +3,12 @@ package sca_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/nanjj/cub/logs"
 	"github.com/nanjj/cub/sca"
-	"golang.org/x/sync/errgroup"
 )
 
 func _testRunnerName(id int) string {
@@ -35,19 +33,16 @@ func TestRunnerJoin(t *testing.T) {
 	n := _testRunnerName
 	r := _testNewRunner
 	// r11 <- r21
-	var g errgroup.Group
 	r11, err := r(11, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer r11.Close()
-	g.Go(r11.Run)
 	r21, err := r(21, 11)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer r21.Close()
-	g.Go(r21.Run)
 
 	time.Sleep(time.Millisecond * 1000)
 
@@ -88,7 +83,7 @@ func TestRunnerJoin(t *testing.T) {
 	}
 	endTime := <-ch
 	t.Log(endTime.Sub(startTime))
-	event.Receiver = []string{n(11)}
+	event.To = []string{n(11)}
 	startTime = time.Now()
 	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
@@ -96,7 +91,7 @@ func TestRunnerJoin(t *testing.T) {
 	endTime = <-ch
 	t.Log(endTime.Sub(startTime))
 	// ping all
-	event.Receiver.ToDown()
+	event.To.ToDown()
 	startTime = time.Now()
 	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
@@ -112,7 +107,6 @@ func TestRunnerJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r31.Close()
-	g.Go(r31.Run)
 	// wait a while
 	time.Sleep(time.Millisecond * 1000)
 	// Check points:
@@ -133,17 +127,17 @@ func TestRunnerJoin(t *testing.T) {
 	})
 	checkRoutes(r21, map[string]string{"r31": "r31"})
 	checkRoutes(r31, map[string]string{})
-	checkMembers := func(r *sca.Runner, want []string) {
+	checkMembers := func(r *sca.Runner, want sca.Set) {
 		if members := r.Members(); !reflect.DeepEqual(want, members) {
-			t.Fatal(r.Name(), members)
+			t.Fatal("node:", r.Name(), "actual:", members, "want:", want)
 		}
 	}
-	checkMembers(r11, []string{"r21"})
-	checkMembers(r21, []string{"r31"})
-	checkMembers(r31, []string{})
+	checkMembers(r11, sca.NewSet("r21"))
+	checkMembers(r21, sca.NewSet("r31"))
+	checkMembers(r31, sca.NewSet())
 	// ping r31 from r11
 	r31.AddAction("ping", ping)
-	event.Receiver = []string{r31.Name()}
+	event.To = []string{r31.Name()}
 	startTime = time.Now()
 	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
@@ -151,7 +145,7 @@ func TestRunnerJoin(t *testing.T) {
 	endTime = <-ch
 	t.Log(endTime.Sub(startTime))
 	// ping all
-	event.Receiver.ToDown()
+	event.To.ToDown()
 	startTime = time.Now()
 	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
@@ -175,7 +169,6 @@ func TestRunnerJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r32.Close()
-	g.Go(r32.Run)
 	//r11 -> r21 -> r31
 	//        |
 	//        +---> r32
@@ -198,13 +191,13 @@ func TestRunnerJoin(t *testing.T) {
 	})
 	checkRoutes(r31, map[string]string{})
 	checkRoutes(r32, map[string]string{})
-	checkMembers(r11, []string{"r21"})
-	checkMembers(r21, []string{"r31", "r32"})
-	checkMembers(r31, []string{})
-	checkMembers(r32, []string{})
+	checkMembers(r11, sca.NewSet("r21"))
+	checkMembers(r21, sca.NewSet("r31", "r32"))
+	checkMembers(r31, sca.NewSet())
+	checkMembers(r32, sca.NewSet())
 	// ping all
 	r32.AddAction("ping", ping)
-	event.Receiver.ToDown()
+	event.To.ToDown()
 	startTime = time.Now()
 	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
 		t.Fatal(err)
@@ -225,48 +218,4 @@ func TestRunnerJoin(t *testing.T) {
 	if len(ch) != 0 {
 		t.Fatal()
 	}
-}
-
-func TestRunnerPing(t *testing.T) {
-	r := _testNewRunner
-	n := _testRunnerName
-	closers := make(chan io.Closer, 1024)
-	defer func() {
-		n := len(closers)
-		for i := 0; i < n; i++ {
-			c := <-closers
-			c.Close()
-		}
-	}()
-	var g errgroup.Group
-	rr := func(id, pid int) *sca.Runner {
-		runner, err := r(id, pid)
-		if err != nil {
-			t.Fatal(err)
-		}
-		closers <- runner
-		g.Go(runner.Run)
-		return runner
-	}
-	r11 := rr(11, 0)
-	ctx := context.Background()
-	req := sca.Payload{}
-	startTime := time.Now().UTC()
-	rep, err := r11.Ping(ctx, req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if l := len(rep); l != 2 {
-		t.Fatal(l)
-	}
-
-	if name := string(rep[0]); name != n(11) {
-		t.Fatal(name)
-	}
-	endTime := time.Time{}
-	if err := rep[1].Decode(&endTime); err != nil {
-		t.Fatal(err)
-	}
-	t.Log(endTime.Sub(startTime))
 }
