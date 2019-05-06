@@ -107,7 +107,11 @@ func leaderListen() (leader string) {
 
 func runnerName() (name string) {
 	if name = os.Getenv(envRunnerName); name == "" {
-		name = runnerIp()
+		if hostname, err := os.Hostname(); err != nil {
+			panic(err)
+		} else {
+			name = hostname
+		}
 		os.Setenv(envRunnerName, name)
 	}
 	return

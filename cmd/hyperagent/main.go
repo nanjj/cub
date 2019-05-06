@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/nanjj/cub/sca"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -26,8 +25,6 @@ func RunHyperAgentE(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return
 	}
-	var g errgroup.Group
-	g.Go(r.Run)
-	err = g.Wait()
+	err = r.Wait()
 	return
 }
