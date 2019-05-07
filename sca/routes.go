@@ -1,13 +1,9 @@
 package sca
 
 import (
-	"context"
-	"fmt"
 	"sync"
 
-	"github.com/nanjj/cub/logs"
 	"nanomsg.org/go/mangos/v2"
-	"nanomsg.org/go/mangos/v2/protocol/push"
 )
 
 type Rms struct {
@@ -29,8 +25,25 @@ func (r *Rms) GetRoute(target string) (via string) {
 	return
 }
 
-func (r *Rms) DelRoute(target string) {
-	r.r.Delete(target)
+func (r *Rms) Targets(via string) (names []string) {
+	f := func(k, v interface{}) bool {
+		if name, ok := k.(string); ok {
+			if value, ok := v.(string); ok {
+				if value == via {
+					names = append(names, name)
+				}
+			}
+		}
+		return true
+	}
+	r.r.Range(f)
+	return
+}
+
+func (r *Rms) DelRoute(keys ...string) {
+	for i := range keys {
+		r.r.Delete(keys[i])
+	}
 }
 
 func (r *Rms) Routes() (routes map[string]string) {
@@ -49,6 +62,10 @@ func (r *Rms) Routes() (routes map[string]string) {
 
 func (r *Rms) AddMember(name string, sock mangos.Socket) {
 	r.m.Store(name, sock)
+}
+
+func (r *Rms) DelMember(name string) {
+	r.m.Delete(name)
 }
 
 func (r *Rms) GetMember(name string) (sock mangos.Socket, ok bool) {
@@ -109,37 +126,6 @@ func (r *Rms) Dispatch(targets Targets) (local bool, ups Targets, vias map[strin
 				vias[via] = []string{target}
 			}
 		}
-	}
-	return
-}
-
-// name,listen, members...
-func (r *Rms) Join(ctx context.Context, req Payload) (rep Payload, err error) {
-	sp, ctx := logs.StartSpanFromContext(ctx, "Join")
-	defer sp.Finish()
-	if len(req) < 2 {
-		sp.Error("Bad request")
-		err = fmt.Errorf("bad request")
-		return
-	}
-	name := string(req[0])
-	listen := string(req[1])
-	// add new member
-	sock, ok := r.GetMember(name)
-	if ok && listen != "" {
-		sock.Close()
-		sock = nil
-	}
-	if sock == nil {
-		if sock, err = push.NewSocket(); err != nil {
-			sp.Error(err.Error())
-			return
-		}
-		if err = RetryDial(sock, listen); err != nil {
-			sp.Error(err.Error())
-			return
-		}
-		r.AddMember(name, sock)
 	}
 	return
 }

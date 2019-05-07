@@ -2,13 +2,10 @@ package sca
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"strings"
+	"time"
 
 	"github.com/nanjj/cub/logs"
-	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -27,14 +24,13 @@ type Runner struct {
 	self    *Node
 	actions *Actions
 	rms     *Rms
-	tracer  opentracing.Tracer
-	closers []io.Closer
+	tracer  *logs.Tracer
 	g       errgroup.Group
 }
 
 func NewRunner(cfg *Config) (r *Runner, err error) {
 	name, listen, leader := cfg.RunnerName, cfg.RunnerListen, cfg.LeaderListen
-	tracer, closer, err := logs.NewTracer(name,
+	tracer, err := logs.NewTracer(name,
 		config.Tag("runner", listen),
 		config.Tag("leader", leader))
 	if err != nil {
@@ -47,12 +43,12 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 		self:    &Node{Name: name, Listen: listen},
 		actions: &Actions{},
 		rms:     &Rms{Name: name},
-		closers: []io.Closer{closer},
 		tracer:  tracer,
 	}
-	r.closers = append(r.closers, closer)
-	r.AddAction("join", r.rms.Join)
+	r.AddAction("login", r.Login)
+	r.AddAction("logout", r.Logout)
 	r.AddAction("route", r.Route)
+	r.AddAction("derour", r.Derour)
 	r.AddAction("ping", r.Ping)
 	sock, err := NewServer(listen)
 	if err != nil {
@@ -66,26 +62,15 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 			sp.Error("Failed to dial leader", zap.Stack("stack"), zap.Error(err))
 			return
 		}
-		// Join
+		// Login
 		if err = SendEvent(ctx, sock,
 			&Event{
-				Action: "join",
+				Action: "login",
 				Payload: Payload{
 					DataObject(name), DataObject(listen)},
 				From: name,
 			}); err != nil {
-			sp.Error("failed to join", zap.Stack("stack"), zap.Error(err))
-			return
-		}
-		//Add route
-		if err = SendEvent(ctx, sock,
-			&Event{
-				Action: "route",
-				Payload: Payload{
-					DataObject(name), DataObject(name)},
-				From: name,
-			}); err != nil {
-			sp.Error(err.Error())
+			sp.Error("failed to login", zap.Stack("stack"), zap.Error(err))
 			return
 		}
 		r.leader = &Node{Listen: listen, Client: sock}
@@ -99,7 +84,7 @@ func (r *Runner) run() (err error) {
 		if err = RecvEvent(context.Background(), r.self.Server, e); err != nil {
 			continue
 		}
-		sp, ctx := logs.StartSpanFromCarrier(e.Carrier, r.Tracer(), "Recv")
+		sp, ctx := logs.StartSpanFromCarrier(e.Carrier, r.tracer, "Recv")
 		if err = r.Handle(ctx, e); err != nil {
 			sp.Finish()
 			continue
@@ -184,15 +169,30 @@ func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error
 		r.rms.AddRoute(target, name)
 	}
 	name = r.self.Name
-	rep = Payload{
-		DataObject(name),
-		DataObject(r.NodeType()),
-	}
 	// tell leader
 	if leader := r.leader; leader != nil {
 		req[0] = DataObject(name)
 		if err = SendEvent(ctx, leader.Client, &Event{
 			Action:  "route",
+			Payload: req,
+		}); err != nil {
+			sp.Error(err.Error())
+			return
+		}
+	}
+	return
+}
+
+func (r *Runner) Derour(ctx context.Context, req Payload) (rep Payload, err error) {
+	sp, ctx := logs.StartSpanFromContext(ctx, "Derour")
+	defer sp.Finish()
+	for i := range req {
+		r.rms.DelRoute(string(req[i]))
+	}
+	// tell leader
+	if leader := r.leader; leader != nil {
+		if err = SendEvent(ctx, leader.Client, &Event{
+			Action:  "derour",
 			Payload: req,
 		}); err != nil {
 			sp.Error(err.Error())
@@ -243,32 +243,34 @@ func (r *Runner) Member(name string) mangos.Socket {
 }
 
 func (r *Runner) Close() (err error) {
-	var errs []string
-	closers := []io.Closer{
-		r.Self(),
-		r.Leader(),
-	}
-	for m := range r.Members() {
-		closers = append(closers, r.Member(m))
-	}
-	closers = append(closers, r.closers...)
-	for i := 0; i < len(closers); i++ {
-		c := closers[i]
-		if c != nil {
-			if err := c.Close(); err != nil {
-				errs = append(errs, err.Error())
-			}
+	//Use global tracer
+	sp, ctx := logs.StartSpanFromContextWithTracer(context.Background(), r.tracer, "Close")
+	defer r.tracer.Close()
+	defer sp.Finish()
+	if leader := r.leader; leader != nil {
+		name := r.Name()
+		sock := leader.Client
+		defer sock.Close()
+		if err = SendEvent(ctx, sock,
+			&Event{
+				Action:  "logout",
+				Payload: Payload{DataObject(name)},
+				From:    name,
+			}); err != nil {
+			sp.Error("failed to logout", zap.Stack("stack"), zap.Error(err))
+			return
 		}
 	}
-	if errs != nil {
-		err = errors.New(strings.Join(errs, "\n"))
+	for m := range r.Members() {
+		if sock := r.Member(m); sock != nil {
+			defer sock.Close()
+		}
 	}
+	defer time.Sleep(time.Millisecond * 10)
 	return
 }
 
 func (r *Runner) Name() string { return r.self.Name }
-
-func (r *Runner) Tracer() opentracing.Tracer { return r.tracer }
 
 func (r *Runner) Wait() error {
 	return r.g.Wait()
@@ -282,4 +284,59 @@ func (r *Runner) NodeType() string {
 	} else {
 		return LEAF
 	}
+}
+
+// Login name listen
+func (r *Runner) Login(ctx context.Context, req Payload) (rep Payload, err error) {
+	sp, ctx := logs.StartSpanFromContext(ctx, "Login")
+	defer sp.Finish()
+	if len(req) != 2 {
+		sp.Error("Bad request")
+		err = fmt.Errorf("bad request")
+		return
+	}
+	name := string(req[0])
+	listen := string(req[1])
+	// add new member
+	sock, ok := r.rms.GetMember(name)
+	if ok && listen != "" {
+		sock.Close()
+		sock = nil
+	}
+	if sock == nil {
+		if sock, err = NewClient(listen); err != nil {
+			sp.Error(err.Error())
+			return
+		}
+		r.rms.AddMember(name, sock)
+	}
+	req[1] = DataObject(name)
+	r.Route(ctx, req)
+	return
+}
+
+// Logout name
+func (r *Runner) Logout(ctx context.Context, req Payload) (rep Payload, err error) {
+	sp, ctx := logs.StartSpanFromContext(ctx, "Logout")
+	defer sp.Finish()
+	if len(req) != 1 {
+		sp.Error("Bad request")
+		err = fmt.Errorf("bad request")
+		return
+	}
+	name := string(req[0])
+	targets := r.rms.Targets(name)
+	req = make([]DataObject, len(targets))
+	for i := range targets {
+		req[i] = DataObject(targets[i])
+	}
+	r.Derour(ctx, req)
+
+	if sock, ok := r.rms.GetMember(name); ok {
+		r.rms.DelMember(name)
+		if sock != nil {
+			sock.Close()
+		}
+	}
+	return
 }

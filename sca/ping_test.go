@@ -91,7 +91,7 @@ func TestRunnerPingTree(t *testing.T) {
 		n := len(closers)
 		for i := 0; i < n; i++ {
 			c := <-closers
-			c.Close()
+			defer c.Close()
 		}
 	}()
 	rr := func(id, pid int) *sca.Runner {
@@ -114,7 +114,7 @@ func TestRunnerPingTree(t *testing.T) {
 	if r11 == nil || r21 == nil || r22 == nil || r23 == nil || r31 == nil || r32 == nil {
 		t.Fatal(r11, r21, r22, r23, r31, r32)
 	}
-	// wait r31, r32 join r11 ready
+	// wait r31, r32 login r11 ready
 	for {
 		routes := r11.Routes()
 		if _, ok := routes[n(31)]; ok {

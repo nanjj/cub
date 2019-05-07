@@ -29,7 +29,7 @@ func _testNewRunner(id int, leader int) (r *sca.Runner, err error) {
 	return sca.NewRunner(_testNewConfig(_testRunnerName(id), _testRunnerAddr(id), _testRunnerAddr(leader)))
 }
 
-func TestRunnerJoin(t *testing.T) {
+func TestRunnerLogin(t *testing.T) {
 	n := _testRunnerName
 	r := _testNewRunner
 	// r11 <- r21
@@ -100,7 +100,7 @@ func TestRunnerJoin(t *testing.T) {
 	t.Log(endTime.Sub(startTime))
 	endTime = <-ch
 	t.Log(endTime.Sub(startTime))
-	// join r31
+	// login r31
 	// r11 <- r21 <- r31
 	r31, err := r(31, 21)
 	if err != nil {
@@ -163,7 +163,7 @@ func TestRunnerJoin(t *testing.T) {
 	if len(ch) != 0 {
 		t.Fatal()
 	}
-	// join r32 to r21
+	// login r32 to r21
 	r32, err := r(32, 21)
 	if err != nil {
 		t.Fatal(err)
@@ -218,4 +218,45 @@ func TestRunnerJoin(t *testing.T) {
 	if len(ch) != 0 {
 		t.Fatal()
 	}
+}
+
+func TestRunnerLogout(t *testing.T) {
+	r := _testNewRunner
+	n := _testRunnerName
+	rr := func(id, pid int) *sca.Runner {
+		runner, err := r(id, pid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return runner
+	}
+	r10 := rr(10, 0)
+	r20 := rr(20, 10)
+	// wait r20 login
+	for i := 0; i < 10; i++ {
+		routes := r10.Routes()
+		t.Log(routes)
+		if name, ok := routes[n(20)]; ok && name == n(20) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	routes := r10.Routes()
+	if len(routes) != 1 {
+		t.Fatal()
+	}
+
+	r20.Close()
+	for i := 0; i < 10; i++ {
+		routes := r10.Routes()
+		if len(routes) == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	routes = r10.Routes()
+	if len(routes) != 0 {
+		t.Fatal(routes, r10.Members())
+	}
+	r10.Close()
 }
