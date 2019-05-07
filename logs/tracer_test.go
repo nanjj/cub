@@ -8,13 +8,13 @@ import (
 )
 
 func TestNewTracer(t *testing.T) {
-	tr, cr, err := logs.NewTracer("tracer",
+	tr, err := logs.NewTracer("tracer",
 		config.Tag("runner", "127.0.0.1:54321"),
 		config.Tag("leader", "127.0.0.1:54312"))
 	if err != nil {
 		t.Fatal()
 	}
-	defer cr.Close()
+	defer tr.Close()
 	sp := tr.StartSpan("TestNewTracer")
 	sp.Finish()
 }
