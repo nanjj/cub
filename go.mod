@@ -25,5 +25,6 @@ require (
 	go.uber.org/zap v1.9.1
 	golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6
 	golang.org/x/sys v0.0.0-20181205085412-a5c9d58dba9a // indirect
+	nanomsg.org/go/mangos v2.0.0+incompatible
 	nanomsg.org/go/mangos/v2 v2.0.2
 )

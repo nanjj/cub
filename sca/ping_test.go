@@ -2,7 +2,6 @@ package sca_test
 
 import (
 	"context"
-	"io"
 	"testing"
 	"time"
 
@@ -13,24 +12,15 @@ import (
 func TestRunnerPingSelf(t *testing.T) {
 	r := _testNewRunner
 	n := _testRunnerName
-	a := _testRunnerAddr
-	closers := make(chan io.Closer, 1024)
-	defer func() {
-		n := len(closers)
-		for i := 0; i < n; i++ {
-			c := <-closers
-			c.Close()
-		}
-	}()
 	rr := func(id, pid int) *sca.Runner {
 		runner, err := r(id, pid)
 		if err != nil {
 			t.Fatal(err)
 		}
-		closers <- runner
 		return runner
 	}
 	r11 := rr(11, 0)
+	defer r11.Close()
 	ctx := context.Background()
 	req := sca.Payload{}
 	// ping inside
@@ -61,11 +51,7 @@ func TestRunnerPingSelf(t *testing.T) {
 		return
 	})
 	startTime = time.Now().UTC()
-	sock, err := sca.NewClient(a(11))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = sca.SendEvent(ctx, sock, &sca.Event{
+	if err = r11.Self().Send(ctx, &sca.Event{
 		Action:   "ping",
 		Callback: "pong",
 	}); err != nil {
@@ -85,32 +71,28 @@ func TestRunnerPingSelf(t *testing.T) {
 func TestRunnerPingTree(t *testing.T) {
 	r := _testNewRunner
 	n := _testRunnerName
-	a := _testRunnerAddr
-	closers := make(chan io.Closer, 1024)
-	defer func() {
-		n := len(closers)
-		for i := 0; i < n; i++ {
-			c := <-closers
-			defer c.Close()
-		}
-	}()
 	rr := func(id, pid int) *sca.Runner {
 		runner, err := r(id, pid)
 		if err != nil {
 			t.Fatal(err)
 		}
-		closers <- runner
 		return runner
 	}
 	//r11 - r21 - r32
 	//      r22
 	//      r23 - r31
 	r11 := rr(11, 0) // top
+	defer r11.Close()
 	r21 := rr(21, 11)
+	defer r21.Close()
 	r32 := rr(32, 21)
+	defer r32.Close()
 	r22 := rr(22, 11)
+	defer r22.Close()
 	r23 := rr(23, 11)
+	defer r23.Close()
 	r31 := rr(31, 23)
+	defer r31.Close()
 	if r11 == nil || r21 == nil || r22 == nil || r23 == nil || r31 == nil || r32 == nil {
 		t.Fatal(r11, r21, r22, r23, r31, r32)
 	}
@@ -134,11 +116,7 @@ func TestRunnerPingTree(t *testing.T) {
 	}
 	pong := r11.AddCallback(pongCb)
 	// Now ping r31 from r11
-	sock, err := sca.NewClient(a(11))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = sca.SendEvent(context.Background(), sock, &sca.Event{
+	if err := r11.Self().Send(context.Background(), &sca.Event{
 		Action:   "ping",
 		To:       sca.Targets{n(31)},
 		From:     n(11),
@@ -150,13 +128,7 @@ func TestRunnerPingTree(t *testing.T) {
 	if len(rep) != 2 {
 		t.Fatal(rep)
 	}
-	sock.Close()
-	// Now ping r31 from r32
-	sock, err = sca.NewClient(a(32))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = sca.SendEvent(context.Background(), sock, &sca.Event{
+	if err := r32.Self().Send(context.Background(), &sca.Event{
 		Action:   "ping",
 		To:       sca.Targets{n(31)},
 		From:     n(32),
@@ -168,13 +140,8 @@ func TestRunnerPingTree(t *testing.T) {
 	if len(rep) != 2 {
 		t.Fatal(rep)
 	}
-	sock.Close()
 	// Now ping r31 and r32 from r22
-	sock, err = sca.NewClient(a(22))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = sca.SendEvent(context.Background(), sock, &sca.Event{
+	if err := r22.Self().Send(context.Background(), &sca.Event{
 		Action:   "ping",
 		To:       sca.Targets{n(31), n(32)},
 		From:     n(22),

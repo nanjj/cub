@@ -25,6 +25,9 @@ func RunHyperAgentE(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return
 	}
-	err = r.Wait()
+
+	if err = r.Wait(); err == nil {
+		err = r.Close() // do cleanup
+	}
 	return
 }

@@ -64,5 +64,7 @@ golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35 h1:YAFjXN64LMvktoUZH9zgY4lGc
 golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20181205085412-a5c9d58dba9a h1:1n5lsVfiQW3yfsRGu98756EH1YthsFqr/5mxHduZW2A=
 golang.org/x/sys v0.0.0-20181205085412-a5c9d58dba9a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+nanomsg.org/go/mangos v2.0.0+incompatible h1:LE83iAKZmIY8CP0gI9ETWgGL9X2m0d4WH0oyIRuAJ7o=
+nanomsg.org/go/mangos v2.0.0+incompatible/go.mod h1:J0wfyQ2IFb1mQNCCtBFT4zy8Z2tsllokr/ciEzvrpds=
 nanomsg.org/go/mangos/v2 v2.0.2 h1:xHLKOSFVVvqmXWcrtUB/4MO5hMPkjEcMQ7jUVcqVY6o=
 nanomsg.org/go/mangos/v2 v2.0.2/go.mod h1:t3xUorDTR13Yp5P6yhtaHH/99R2n7bgIjnvytu35Z9Y=
