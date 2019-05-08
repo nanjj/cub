@@ -13,7 +13,13 @@ import (
 )
 
 var (
-	Level = zapcore.Level(-2)
+	Level = func() (level zapcore.Level) {
+		level = zapcore.InfoLevel
+		if s := os.Getenv("LOGS_LEVEL"); s != "" {
+			level.Set(s)
+		}
+		return
+	}()
 )
 
 type SpanZapCore struct {
@@ -45,16 +51,7 @@ func NewFieldsSpan(sp opentracing.Span) *FieldsSpan {
 }
 
 func NewSpanZapCore(sp opentracing.Span) *SpanZapCore {
-	level := zapcore.InfoLevel
-	if Level < zapcore.DebugLevel {
-		if s := os.Getenv("LOGS_LEVEL"); s != "" {
-			level.Set(s)
-		}
-		Level = level
-	} else {
-		level = Level
-	}
-	return &SpanZapCore{NewFieldsSpan(sp), level}
+	return &SpanZapCore{NewFieldsSpan(sp), Level}
 }
 
 func (c *SpanZapCore) With(fields []zapcore.Field) (core zapcore.Core) {

@@ -9,7 +9,6 @@ import (
 	"github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
-	"nanomsg.org/go/mangos/v2"
 	_ "nanomsg.org/go/mangos/v2/transport/all"
 )
 
@@ -17,6 +16,7 @@ const (
 	ROOT   = "root"
 	LEAF   = "leaf"
 	BRANCH = "branch"
+	EXIT   = ""
 )
 
 type Runner struct {
@@ -50,30 +50,14 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 	r.AddAction("route", r.Route)
 	r.AddAction("derour", r.Derour)
 	r.AddAction("ping", r.Ping)
-	sock, err := NewServer(listen)
-	if err != nil {
-		sp.Error("Failed to listen", zap.Stack("stack"), zap.Error(err))
-		return
-	}
-	r.self.Server = sock
 	r.g.Go(r.run)
 	if leader != "" {
-		if sock, err = NewClient(leader); err != nil {
-			sp.Error("Failed to dial leader", zap.Stack("stack"), zap.Error(err))
-			return
-		}
+		r.leader = &Node{Listen: leader}
 		// Login
-		if err = SendEvent(ctx, sock,
-			&Event{
-				Action: "login",
-				Payload: Payload{
-					DataObject(name), DataObject(listen)},
-				From: name,
-			}); err != nil {
+		if err = r.leader.Login(ctx, name, listen); err != nil {
 			sp.Error("failed to login", zap.Stack("stack"), zap.Error(err))
 			return
 		}
-		r.leader = &Node{Listen: listen, Client: sock}
 	}
 	return
 }
@@ -81,15 +65,21 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 func (r *Runner) run() (err error) {
 	for {
 		e := &Event{}
-		if err = RecvEvent(context.Background(), r.self.Server, e); err != nil {
+		if err = r.self.Recv(context.Background(), e); err != nil {
 			continue
 		}
-		sp, ctx := logs.StartSpanFromCarrier(e.Carrier, r.tracer, "Recv")
-		if err = r.Handle(ctx, e); err != nil {
-			sp.Finish()
-			continue
+		if e.Action == EXIT {
+			break
 		}
-		sp.Finish()
+		r.g.Go(func() (err error) {
+			sp, ctx := logs.StartSpanFromCarrier(e.Carrier, r.tracer, "Run")
+			defer sp.Finish()
+			if err = r.Handle(ctx, e); err != nil {
+				sp.Error("Failed to handle event", zap.Error(err))
+				return
+			}
+			return
+		})
 	}
 	return
 }
@@ -103,7 +93,7 @@ func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
 		if leader := r.leader; leader != nil {
 			dup := e.Clone()
 			dup.To = ups
-			if err = SendEvent(ctx, leader.Client, dup); err != nil {
+			if err = r.leader.Send(ctx, dup); err != nil {
 				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 				return
 			}
@@ -123,7 +113,7 @@ func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
 		if member, ok := r.rms.GetMember(via); ok {
 			dup := e.Clone()
 			dup.To = downs
-			if err = SendEvent(ctx, member, dup); err != nil {
+			if err = member.Send(ctx, dup); err != nil {
 				sp.Error("Failed to send", zap.Stack("stack"), zap.Error(err))
 				return
 			}
@@ -172,7 +162,7 @@ func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error
 	// tell leader
 	if leader := r.leader; leader != nil {
 		req[0] = DataObject(name)
-		if err = SendEvent(ctx, leader.Client, &Event{
+		if err = r.leader.Send(ctx, &Event{
 			Action:  "route",
 			Payload: req,
 		}); err != nil {
@@ -191,7 +181,7 @@ func (r *Runner) Derour(ctx context.Context, req Payload) (rep Payload, err erro
 	}
 	// tell leader
 	if leader := r.leader; leader != nil {
-		if err = SendEvent(ctx, leader.Client, &Event{
+		if err = r.leader.Send(ctx, &Event{
 			Action:  "derour",
 			Payload: req,
 		}); err != nil {
@@ -224,20 +214,17 @@ func (r *Runner) RemoveAction(name string) {
 	r.actions.Delete(name)
 }
 
-func (r *Runner) Leader() (leader mangos.Socket) {
-	if r.leader != nil {
-		leader = r.leader.Client
-	}
-	return
+func (r *Runner) Leader() (leader *Node) {
+	return r.leader
 }
 
-func (r *Runner) Self() mangos.Socket {
-	return r.self.Server
+func (r *Runner) Self() *Node {
+	return r.self
 }
 
-func (r *Runner) Member(name string) mangos.Socket {
-	if sock, ok := r.rms.GetMember(name); ok {
-		return sock
+func (r *Runner) Member(name string) *Node {
+	if member, ok := r.rms.GetMember(name); ok {
+		return member
 	}
 	return nil
 }
@@ -247,25 +234,21 @@ func (r *Runner) Close() (err error) {
 	sp, ctx := logs.StartSpanFromContextWithTracer(context.Background(), r.tracer, "Close")
 	defer r.tracer.Close()
 	defer sp.Finish()
+	defer r.self.Close()
 	if leader := r.leader; leader != nil {
+		defer leader.Close()
 		name := r.Name()
-		sock := leader.Client
-		defer sock.Close()
-		if err = SendEvent(ctx, sock,
-			&Event{
-				Action:  "logout",
-				Payload: Payload{DataObject(name)},
-				From:    name,
-			}); err != nil {
+		if err = leader.Logout(ctx, name); err != nil {
 			sp.Error("failed to logout", zap.Stack("stack"), zap.Error(err))
 			return
 		}
 	}
-	for m := range r.Members() {
-		if sock := r.Member(m); sock != nil {
-			defer sock.Close()
+	for name := range r.Members() {
+		if node := r.Member(name); node != nil {
+			defer node.Close()
 		}
 	}
+	r.self.Exit(ctx)
 	defer time.Sleep(time.Millisecond * 10)
 	return
 }
@@ -298,17 +281,14 @@ func (r *Runner) Login(ctx context.Context, req Payload) (rep Payload, err error
 	name := string(req[0])
 	listen := string(req[1])
 	// add new member
-	sock, ok := r.rms.GetMember(name)
+	member, ok := r.rms.GetMember(name)
 	if ok && listen != "" {
-		sock.Close()
-		sock = nil
+		member.Close()
+		member = nil
 	}
-	if sock == nil {
-		if sock, err = NewClient(listen); err != nil {
-			sp.Error(err.Error())
-			return
-		}
-		r.rms.AddMember(name, sock)
+	if member == nil {
+		member = &Node{Name: name, Listen: listen}
+		r.rms.AddMember(name, member)
 	}
 	req[1] = DataObject(name)
 	r.Route(ctx, req)
@@ -332,10 +312,10 @@ func (r *Runner) Logout(ctx context.Context, req Payload) (rep Payload, err erro
 	}
 	r.Derour(ctx, req)
 
-	if sock, ok := r.rms.GetMember(name); ok {
+	if node, ok := r.rms.GetMember(name); ok {
 		r.rms.DelMember(name)
-		if sock != nil {
-			sock.Close()
+		if node != nil {
+			node.Close()
 		}
 	}
 	return

@@ -6,16 +6,10 @@ import (
 )
 
 const (
-	envRunnerListen                = "HYPERAGENT_RUNNER_LISTEN"
-	envRunnerName                  = "HYPERAGENT_RUNNER_NAME"
-	envRunnerIp                    = "HYPERAGENT_RUNNER_IP"
-	envLeaderListen                = "HYPERAGENT_LEADER_LISTEN"
-	envJaegerServiceName           = "JAEGER_SERVICE_NAME"
-	envJaegerTags                  = "JAEGER_TAGS"
-	envJaegerSamplerType           = "JAEGER_SAMPLER_TYPE"
-	envJaegerSamplerParam          = "JAEGER_SAMPLER_PARAM"
-	envJaegerReporterMaxQueueSize  = "JAEGER_REPORTER_MAX_QUEUE_SIZE"
-	envJaegerReporterFlushInterval = "JAEGER_REPORTER_FLUSH_INTERVAL"
+	envRunnerListen = "HYPERAGENT_RUNNER_LISTEN"
+	envRunnerName   = "HYPERAGENT_RUNNER_NAME"
+	envRunnerIp     = "HYPERAGENT_RUNNER_IP"
+	envLeaderListen = "HYPERAGENT_LEADER_LISTEN"
 )
 
 type Config struct {
@@ -31,17 +25,6 @@ func (cfg *Config) FromEnv() (err error) {
 	cfg.RunnerListen = runnerListen()
 	cfg.LeaderListen = leaderListen()
 	return
-}
-
-func init() {
-	os.Setenv(envJaegerSamplerType, "const")
-	os.Setenv(envJaegerSamplerParam, "1")
-	if os.Getenv(envJaegerReporterMaxQueueSize) == "" {
-		os.Setenv(envJaegerReporterMaxQueueSize, "64")
-	}
-	if os.Getenv(envJaegerReporterFlushInterval) == "" {
-		os.Setenv(envJaegerReporterFlushInterval, "10s")
-	}
 }
 
 func runnerIp() (ip string) {

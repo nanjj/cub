@@ -2,8 +2,6 @@ package sca
 
 import (
 	"sync"
-
-	"nanomsg.org/go/mangos/v2"
 )
 
 type Rms struct {
@@ -60,18 +58,18 @@ func (r *Rms) Routes() (routes map[string]string) {
 	return
 }
 
-func (r *Rms) AddMember(name string, sock mangos.Socket) {
-	r.m.Store(name, sock)
+func (r *Rms) AddMember(name string, node *Node) {
+	r.m.Store(name, node)
 }
 
 func (r *Rms) DelMember(name string) {
 	r.m.Delete(name)
 }
 
-func (r *Rms) GetMember(name string) (sock mangos.Socket, ok bool) {
+func (r *Rms) GetMember(name string) (node *Node, ok bool) {
 	v, ok := r.m.Load(name)
 	if ok {
-		sock, ok = v.(mangos.Socket)
+		node, ok = v.(*Node)
 	}
 	return
 }

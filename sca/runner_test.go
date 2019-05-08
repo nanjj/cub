@@ -78,14 +78,15 @@ func TestRunnerLogin(t *testing.T) {
 		Action: "ping",
 	}
 	startTime := time.Now()
-	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
+
+	if err := r21.Leader().Send(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime := <-ch
 	t.Log(endTime.Sub(startTime))
 	event.To = []string{n(11)}
 	startTime = time.Now()
-	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
+	if err := r21.Leader().Send(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime = <-ch
@@ -93,7 +94,7 @@ func TestRunnerLogin(t *testing.T) {
 	// ping all
 	event.To.ToDown()
 	startTime = time.Now()
-	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
+	if err := r21.Leader().Send(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime = <-ch
@@ -139,7 +140,7 @@ func TestRunnerLogin(t *testing.T) {
 	r31.AddAction("ping", ping)
 	event.To = []string{r31.Name()}
 	startTime = time.Now()
-	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
+	if err := r21.Leader().Send(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	endTime = <-ch
@@ -147,7 +148,7 @@ func TestRunnerLogin(t *testing.T) {
 	// ping all
 	event.To.ToDown()
 	startTime = time.Now()
-	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
+	if err := r21.Leader().Send(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	// r11 pong
@@ -199,7 +200,7 @@ func TestRunnerLogin(t *testing.T) {
 	r32.AddAction("ping", ping)
 	event.To.ToDown()
 	startTime = time.Now()
-	if err := sca.SendEvent(context.Background(), r21.Leader(), event); err != nil {
+	if err := r21.Leader().Send(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	// r11 pong
@@ -239,7 +240,7 @@ func TestRunnerLogout(t *testing.T) {
 		if name, ok := routes[n(20)]; ok && name == n(20) {
 			break
 		}
-		time.Sleep(time.Millisecond)
+		time.Sleep(time.Millisecond * 10)
 	}
 	routes := r10.Routes()
 	if len(routes) != 1 {
@@ -252,11 +253,49 @@ func TestRunnerLogout(t *testing.T) {
 		if len(routes) == 0 {
 			break
 		}
-		time.Sleep(time.Millisecond)
+		time.Sleep(time.Millisecond * 10)
 	}
 	routes = r10.Routes()
 	if len(routes) != 0 {
 		t.Fatal(routes, r10.Members())
 	}
 	r10.Close()
+	r10.Wait()
+}
+
+func TestRunnerNodeType(t *testing.T) {
+	r := _testNewRunner
+	n := _testRunnerName
+	rr := func(id, pid int) *sca.Runner {
+		runner, err := r(id, pid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pid != 0 {
+			for i := 0; i < 10; i++ {
+				members := runner.Members()
+				if members != nil && members[n(pid)] {
+					break
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
+		return runner
+	}
+	r10 := rr(10, 0) // root
+	defer r10.Close()
+	r20 := rr(20, 10) // branch
+	defer r20.Close()
+	r30 := rr(30, 20) // leaf
+	defer r30.Close()
+	if nodeType := r10.NodeType(); nodeType != sca.ROOT {
+		t.Fatal(nodeType)
+	}
+	if nodeType := r20.NodeType(); nodeType != sca.BRANCH {
+		t.Fatal(nodeType)
+	}
+	if nodeType := r30.NodeType(); nodeType != sca.LEAF {
+		t.Fatal(nodeType)
+	}
+
 }

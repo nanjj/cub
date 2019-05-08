@@ -3,18 +3,19 @@ package sca_test
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/nanjj/cub/logs"
 	"github.com/opentracing/opentracing-go"
 )
 
 func TestMain(m *testing.M) {
-	rt := func() int {
+	os.Exit(func() int {
 		if tr, err := logs.NewTracer("ScaTest"); err == nil {
+			defer time.Sleep(time.Millisecond)
 			defer tr.Close()
 			opentracing.SetGlobalTracer(tr)
 		}
 		return m.Run()
-	}()
-	os.Exit(rt)
+	}())
 }
