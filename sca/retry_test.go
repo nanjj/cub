@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/nanjj/cub/sca"
 	"golang.org/x/sync/errgroup"
 	"nanomsg.org/go/mangos/v2"
@@ -16,6 +17,9 @@ func TestRetry(t *testing.T) {
 	const (
 		addr = "tcp://127.0.0.1:55555"
 	)
+	oldRetry := sca.Retry
+	defer func() { sca.Retry = oldRetry }()
+	sca.Retry = sca.RetryOpts{retry.Attempts(10), retry.Delay(time.Millisecond * 10)}
 	tcs := []struct {
 		dial   func(mangos.Socket, string) error
 		listen func(mangos.Socket, string) error
@@ -24,10 +28,10 @@ func TestRetry(t *testing.T) {
 		noerr  bool
 	}{
 		{
-			dial:   sca.RetryDial,
-			listen: sca.RetryListen,
-			send:   sca.RetrySend,
-			recv:   sca.RetryRecv,
+			dial:   sca.Retry.Dial,
+			listen: sca.Retry.Listen,
+			send:   sca.Retry.Send,
+			recv:   sca.Retry.Recv,
 			noerr:  true,
 		},
 		{
@@ -68,7 +72,6 @@ func TestRetry(t *testing.T) {
 					t.Log(err)
 					return
 				}
-				sock.SetOption(mangos.OptionSendDeadline, time.Millisecond*100)
 				g.Go(func() (err error) {
 					err = tc.send(sock, []byte("hello"))
 					if err != nil {
@@ -78,7 +81,7 @@ func TestRetry(t *testing.T) {
 				})
 				return
 			})
-			time.Sleep(time.Millisecond * 200)
+			time.Sleep(time.Millisecond * 10)
 			//Listen and Recv
 			g.Go(func() (err error) {
 				var sock mangos.Socket
@@ -87,7 +90,7 @@ func TestRetry(t *testing.T) {
 					t.Log(err)
 					return
 				}
-				sock.SetOption(mangos.OptionRecvDeadline, time.Millisecond*100)
+				sock.SetOption(mangos.OptionRecvDeadline, time.Millisecond*10)
 				closers <- sock
 				err = tc.listen(sock, addr)
 				if err != nil {
