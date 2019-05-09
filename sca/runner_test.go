@@ -29,9 +29,20 @@ func _testNewRunner(id int, leader int) (r *sca.Runner, err error) {
 	return sca.NewRunner(_testNewConfig(_testRunnerName(id), _testRunnerAddr(id), _testRunnerAddr(leader)))
 }
 
+func _testWaitReady(l *sca.Runner, id int, exist bool) {
+	name := _testRunnerName(id)
+	for i := 0; i < 10; i++ {
+		if _, ok := l.Routes()[name]; ok == exist {
+			break
+		}
+		time.Sleep(time.Millisecond * 10)
+	}
+}
+
 func TestRunnerLogin(t *testing.T) {
 	n := _testRunnerName
 	r := _testNewRunner
+	w := _testWaitReady
 	// r11 <- r21
 	r11, err := r(11, 0)
 	if err != nil {
@@ -44,7 +55,7 @@ func TestRunnerLogin(t *testing.T) {
 	}
 	defer r21.Close()
 
-	time.Sleep(time.Millisecond * 1000)
+	w(r11, 21, true)
 
 	if members := r21.Members(); len(members) != 0 {
 		t.Fatal(members)
@@ -109,7 +120,8 @@ func TestRunnerLogin(t *testing.T) {
 	}
 	defer r31.Close()
 	// wait a while
-	time.Sleep(time.Millisecond * 1000)
+	w(r21, 31, true)
+	w(r11, 31, true)
 	// Check points:
 	// | runner | routes           | members |
 	// |--------+------------------+---------|
@@ -160,7 +172,7 @@ func TestRunnerLogin(t *testing.T) {
 	// r31 pong
 	endTime = <-ch
 	t.Log(endTime.Sub(startTime))
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 10)
 	if len(ch) != 0 {
 		t.Fatal()
 	}
@@ -180,7 +192,8 @@ func TestRunnerLogin(t *testing.T) {
 	//| r21    | {r31:r31,r32:r32}         | [r31,r32] |
 	//| r31    | -                         | -         |
 	//| r32    | -                         | -         |
-	time.Sleep(time.Millisecond * 100)
+	w(r11, 32, true)
+	w(r21, 32, true)
 	checkRoutes(r11, map[string]string{
 		"r21": "r21",
 		"r31": "r21",
@@ -215,7 +228,7 @@ func TestRunnerLogin(t *testing.T) {
 	// r32 pong
 	endTime = <-ch
 	t.Log(endTime.Sub(startTime))
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 10)
 	if len(ch) != 0 {
 		t.Fatal()
 	}
@@ -223,7 +236,7 @@ func TestRunnerLogin(t *testing.T) {
 
 func TestRunnerLogout(t *testing.T) {
 	r := _testNewRunner
-	n := _testRunnerName
+	w := _testWaitReady
 	rr := func(id, pid int) *sca.Runner {
 		runner, err := r(id, pid)
 		if err != nil {
@@ -233,15 +246,7 @@ func TestRunnerLogout(t *testing.T) {
 	}
 	r10 := rr(10, 0)
 	r20 := rr(20, 10)
-	// wait r20 login
-	for i := 0; i < 10; i++ {
-		routes := r10.Routes()
-		t.Log(routes)
-		if name, ok := routes[n(20)]; ok && name == n(20) {
-			break
-		}
-		time.Sleep(time.Millisecond * 10)
-	}
+	w(r10, 20, true)
 	routes := r10.Routes()
 	if len(routes) != 1 {
 		t.Fatal()

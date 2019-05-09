@@ -5,25 +5,28 @@ import (
 	"nanomsg.org/go/mangos/v2"
 )
 
-func RetryDial(sock mangos.Socket, addr string) (err error) {
-	return retry.Do(func() error { return sock.Dial(addr) },
-		retry.LastErrorOnly(true), retry.Attempts(5))
+var (
+	Retry = RetryOpts{retry.LastErrorOnly(true), retry.Attempts(5)}
+)
+
+type RetryOpts []retry.Option
+
+func (opts RetryOpts) Dial(sock mangos.Socket, addr string) (err error) {
+	return retry.Do(func() error { return sock.Dial(addr) }, opts...)
 }
 
-func RetryListen(sock mangos.Socket, addr string) (err error) {
-	return retry.Do(func() error { return sock.Listen(addr) },
-		retry.LastErrorOnly(true), retry.Attempts(5))
+func (opts RetryOpts) Listen(sock mangos.Socket, addr string) (err error) {
+	return retry.Do(func() error { return sock.Listen(addr) }, opts...)
 }
 
-func RetrySend(sock mangos.Socket, b []byte) (err error) {
-	return retry.Do(func() error { return sock.Send(b) },
-		retry.LastErrorOnly(true), retry.Attempts(5))
+func (opts RetryOpts) Send(sock mangos.Socket, b []byte) (err error) {
+	return retry.Do(func() error { return sock.Send(b) }, opts...)
 }
 
-func RetryRecv(sock mangos.Socket) (b []byte, err error) {
+func (opts RetryOpts) Recv(sock mangos.Socket) (b []byte, err error) {
 	err = retry.Do(func() (err error) {
 		b, err = sock.Recv()
 		return
-	}, retry.LastErrorOnly(true), retry.Attempts(5))
+	}, opts...)
 	return
 }

@@ -2,6 +2,10 @@ dist: xenial
 language: go
 go:
   - "1.12.4"
+cache:
+  directories:
+    - $HOME/.cache/go-build
+    - $HOME/gopath/pkg/mod
 env:
   GO111MODULE: "on"
 script:

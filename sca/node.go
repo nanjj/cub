@@ -50,7 +50,7 @@ func (n *Node) Send(ctx context.Context, e *Event) (err error) {
 			return
 		}
 		listen := n.Listen
-		if err = RetryDial(n.pusher, listen); err != nil {
+		if err = Retry.Dial(n.pusher, listen); err != nil {
 			sp.Error("Failed to dial",
 				zap.Error(err),
 				zap.Stack("stack"),
@@ -76,7 +76,7 @@ func (n *Node) Send(ctx context.Context, e *Event) (err error) {
 		err = ErrorEncode
 		return
 	}
-	if err = RetrySend(sock, out); err != nil {
+	if err = Retry.Send(sock, out); err != nil {
 		sp.Error("failed to send", zap.Stack("stack"), zap.Error(err))
 		err = ErrorSend
 		return
@@ -93,7 +93,7 @@ func (n *Node) Recv(ctx context.Context, e *Event) (err error) {
 			return
 		}
 		listen := n.Listen
-		if err = RetryListen(n.puller, listen); err != nil {
+		if err = Retry.Listen(n.puller, listen); err != nil {
 			sp.Error("Failed to listen",
 				zap.Stack("stack"), zap.Error(err),
 				zap.String("listen", listen))
@@ -106,7 +106,7 @@ func (n *Node) Recv(ctx context.Context, e *Event) (err error) {
 		err = ErrorListen
 		return
 	}
-	in, err := RetryRecv(sock)
+	in, err := Retry.Recv(sock)
 	if err != nil {
 		sp.Error("Failed to receive", zap.Stack("stack"), zap.Error(err))
 		return

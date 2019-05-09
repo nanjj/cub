@@ -6,19 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/nanjj/cub/sca"
 	"golang.org/x/sync/errgroup"
 )
 
-func TestMain(m *testing.M) {
-	rt := func() int {
-		os.Setenv("HYPERAGENT_RUNNER_IP", "127.0.0.1")
-		return m.Run()
-	}()
-	os.Exit(rt)
-}
-
 func TestRunHyperAgentE(t *testing.T) {
+	os.Setenv("HYPERAGENT_RUNNER_IP", "127.0.0.1")
+	oldRetry := sca.Retry
+	defer func() { sca.Retry = oldRetry }()
+	sca.Retry = append(sca.Retry, retry.Attempts(3), retry.Delay(time.Millisecond*10))
 	var g errgroup.Group
 	g.Go(func() error {
 		main()
@@ -35,7 +32,7 @@ func TestRunHyperAgentE(t *testing.T) {
 	if listen == "" || name == "" {
 		t.Fatal()
 	}
-	main()
+	go main()
 	node := sca.Node{Name: name, Listen: listen}
 	node.Exit(context.Background())
 	if err := g.Wait(); err != nil {

@@ -5,12 +5,16 @@ import (
 	"testing"
 	"time"
 
+	retry "github.com/avast/retry-go"
 	"github.com/nanjj/cub/sca"
 	"golang.org/x/sync/errgroup"
 	"nanomsg.org/go/mangos"
 )
 
 func TestNodeRecv(t *testing.T) {
+	oldRetry := sca.Retry
+	defer func() { sca.Retry = oldRetry }()
+	sca.Retry = append(sca.Retry, retry.Attempts(1), retry.Delay(time.Millisecond))
 	listen := "tcp://127.0.0.1:12345"
 	var g errgroup.Group
 	n1 := sca.Node{Name: "node1", Listen: listen}

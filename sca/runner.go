@@ -66,6 +66,9 @@ func (r *Runner) run() (err error) {
 	for {
 		e := &Event{}
 		if err = r.self.Recv(context.Background(), e); err != nil {
+			if err == ErrorListen {
+				break
+			}
 			continue
 		}
 		if e.Action == EXIT {
