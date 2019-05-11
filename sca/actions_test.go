@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/nanjj/cub/sca"
+	"github.com/nanjj/cub/sdo"
 )
 
 func TestActions(t *testing.T) {
-	ping := func(context.Context, sca.Payload) (sca.Payload, error) {
+	ping := func(context.Context, sdo.Payload) (sdo.Payload, error) {
 		return nil, nil
 	}
 	tcs := []struct {

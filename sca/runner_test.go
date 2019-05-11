@@ -9,6 +9,7 @@ import (
 
 	"github.com/nanjj/cub/logs"
 	"github.com/nanjj/cub/sca"
+	"github.com/nanjj/cub/sdo"
 )
 
 func _testRunnerName(id int) string {
@@ -77,7 +78,7 @@ func TestRunnerLogin(t *testing.T) {
 	}
 	// ping r11
 	ch := make(chan time.Time, 1024)
-	ping := func(ctx context.Context, req sca.Payload) (rep sca.Payload, err error) {
+	ping := func(ctx context.Context, req sdo.Payload) (rep sdo.Payload, err error) {
 		sp, ctx := logs.StartSpanFromContext(ctx, "ping")
 		defer sp.Finish()
 		ch <- time.Now()
@@ -85,8 +86,10 @@ func TestRunnerLogin(t *testing.T) {
 	}
 	r11.AddAction("ping", ping)
 	r21.AddAction("ping", ping)
-	event := &sca.Event{
-		Action: "ping",
+	event := &sdo.DataGraph{
+		Summary: sdo.Summary{
+			Action: "ping",
+		},
 	}
 	startTime := time.Now()
 

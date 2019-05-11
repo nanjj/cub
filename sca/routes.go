@@ -2,6 +2,8 @@ package sca
 
 import (
 	"sync"
+
+	"github.com/nanjj/cub/sdo"
 )
 
 type Rms struct {
@@ -93,8 +95,8 @@ func (r *Rms) HasMember() (ok bool) {
 	return
 }
 
-func (r *Rms) Dispatch(targets Targets) (local bool, ups Targets, vias map[string]Targets) {
-	vias = map[string]Targets{}
+func (r *Rms) Dispatch(targets sdo.Targets) (local bool, ups sdo.Targets, vias map[string]sdo.Targets) {
+	vias = map[string]sdo.Targets{}
 	if targets.Local() {
 		local = true
 		return

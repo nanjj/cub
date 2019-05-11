@@ -1,11 +1,11 @@
-package sca_test
+package sdo_test
 
 import (
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/nanjj/cub/sca"
+	"github.com/nanjj/cub/sdo"
 )
 
 func TestDataObjectString(t *testing.T) {
@@ -17,7 +17,7 @@ func TestDataObjectString(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			d := sca.DataObject{}
+			d := sdo.DataObject{}
 			if err := d.Encode(tc.s); err != nil {
 				t.Fatal(err)
 			}
@@ -36,7 +36,7 @@ func BenchmarkDataObjectString(b *testing.B) {
 	hello := "hello"
 	b.Run("DataObject", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			d := sca.DataObject{}
+			d := sdo.DataObject{}
 			if err := d.Encode(hello); err != nil {
 				b.Fatal(err)
 			}
@@ -70,7 +70,7 @@ func TestDataObjectBytes(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			d := sca.DataObject{}
+			d := sdo.DataObject{}
 			if err := d.Encode(tc.b); err != nil {
 				t.Fatal(err)
 			}
@@ -101,7 +101,7 @@ func TestDataObjectStruct(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run("", func(t *testing.T) {
-			d := sca.DataObject{}
+			d := sdo.DataObject{}
 			if err := d.Encode(tc); err != nil {
 				t.Fatal(err)
 			}
@@ -113,6 +113,32 @@ func TestDataObjectStruct(t *testing.T) {
 				want.Name != tc.Name ||
 				want.Id != tc.Id {
 				t.Fatal(tc, want)
+			}
+		})
+	}
+}
+
+func TestDataObjectClone(t *testing.T) {
+	tcs := []struct {
+		name string
+		do   sdo.DataObject
+	}{
+		{"nil", nil},
+		{"empty", sdo.DataObject{}},
+		{"one", sdo.DataObject("one")},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			want := tc.do.Clone()
+			if !reflect.DeepEqual(want, tc.do) {
+				t.Fatalf("%v\n%v", want, tc.do)
+			}
+			if len(want) > 0 {
+				want[0] = byte('1')
+				t.Logf("%s\n%s", string(want), string(tc.do))
+				if reflect.DeepEqual(want, tc.do) {
+					t.Fatalf("%v\n%v", want, tc.do)
+				}
 			}
 		})
 	}

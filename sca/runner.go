@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nanjj/cub/logs"
+	"github.com/nanjj/cub/sdo"
 	"github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -64,7 +65,7 @@ func NewRunner(cfg *Config) (r *Runner, err error) {
 
 func (r *Runner) run() (err error) {
 	for {
-		e := &Event{}
+		e := &sdo.DataGraph{}
 		if err = r.self.Recv(context.Background(), e); err != nil {
 			if err == ErrorListen {
 				break
@@ -87,7 +88,7 @@ func (r *Runner) run() (err error) {
 	return
 }
 
-func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
+func (r *Runner) Handle(ctx context.Context, e *sdo.DataGraph) (err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Handle")
 	defer sp.Finish()
 	targets := e.To
@@ -128,7 +129,7 @@ func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
 	if local { // handle local
 		action := e.Action
 		req := e.Payload
-		var rep Payload
+		var rep sdo.Payload
 		if f, ok := r.actions.Get(action); ok {
 			if rep, err = f(ctx, req); err != nil {
 				sp.Error("Failed to run action", zap.Stack("stack"), zap.Error(err))
@@ -139,8 +140,12 @@ func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
 		}
 		callback := e.Callback
 		if callback != "" && err == nil {
-			ack := &Event{Carrier: e.Carrier, Action: callback}
-			ack.To = Targets{e.From}
+			ack := &sdo.DataGraph{
+				Summary: sdo.Summary{
+					Carrier: e.Carrier,
+					Action:  callback},
+			}
+			ack.To = sdo.Targets{e.From}
 			ack.From = r.Name()
 			ack.Payload = rep
 			if err = r.Handle(ctx, ack); err != nil {
@@ -151,7 +156,7 @@ func (r *Runner) Handle(ctx context.Context, e *Event) (err error) {
 	return
 }
 
-func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error) {
+func (r *Runner) Route(ctx context.Context, req sdo.Payload) (rep sdo.Payload, err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Route")
 	defer sp.Finish()
 	name := string(req[0])
@@ -164,9 +169,11 @@ func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error
 	name = r.self.Name
 	// tell leader
 	if leader := r.leader; leader != nil {
-		req[0] = DataObject(name)
-		if err = r.leader.Send(ctx, &Event{
-			Action:  "route",
+		req[0] = sdo.DataObject(name)
+		if err = r.leader.Send(ctx, &sdo.DataGraph{
+			Summary: sdo.Summary{
+				Action: "route",
+			},
 			Payload: req,
 		}); err != nil {
 			sp.Error(err.Error())
@@ -176,7 +183,7 @@ func (r *Runner) Route(ctx context.Context, req Payload) (rep Payload, err error
 	return
 }
 
-func (r *Runner) Derour(ctx context.Context, req Payload) (rep Payload, err error) {
+func (r *Runner) Derour(ctx context.Context, req sdo.Payload) (rep sdo.Payload, err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Derour")
 	defer sp.Finish()
 	for i := range req {
@@ -184,8 +191,10 @@ func (r *Runner) Derour(ctx context.Context, req Payload) (rep Payload, err erro
 	}
 	// tell leader
 	if leader := r.leader; leader != nil {
-		if err = r.leader.Send(ctx, &Event{
-			Action:  "derour",
+		if err = r.leader.Send(ctx, &sdo.DataGraph{
+			Summary: sdo.Summary{
+				Action: "derour",
+			},
 			Payload: req,
 		}); err != nil {
 			sp.Error(err.Error())
@@ -273,7 +282,7 @@ func (r *Runner) NodeType() string {
 }
 
 // Login name listen
-func (r *Runner) Login(ctx context.Context, req Payload) (rep Payload, err error) {
+func (r *Runner) Login(ctx context.Context, req sdo.Payload) (rep sdo.Payload, err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Login")
 	defer sp.Finish()
 	if len(req) != 2 {
@@ -293,13 +302,13 @@ func (r *Runner) Login(ctx context.Context, req Payload) (rep Payload, err error
 		member = &Node{Name: name, Listen: listen}
 		r.rms.AddMember(name, member)
 	}
-	req[1] = DataObject(name)
+	req[1] = sdo.DataObject(name)
 	r.Route(ctx, req)
 	return
 }
 
 // Logout name
-func (r *Runner) Logout(ctx context.Context, req Payload) (rep Payload, err error) {
+func (r *Runner) Logout(ctx context.Context, req sdo.Payload) (rep sdo.Payload, err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Logout")
 	defer sp.Finish()
 	if len(req) != 1 {
@@ -309,9 +318,9 @@ func (r *Runner) Logout(ctx context.Context, req Payload) (rep Payload, err erro
 	}
 	name := string(req[0])
 	targets := r.rms.Targets(name)
-	req = make([]DataObject, len(targets))
+	req = make([]sdo.DataObject, len(targets))
 	for i := range targets {
-		req[i] = DataObject(targets[i])
+		req[i] = sdo.DataObject(targets[i])
 	}
 	r.Derour(ctx, req)
 

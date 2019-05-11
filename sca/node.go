@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/nanjj/cub/logs"
-	"github.com/ugorji/go/codec"
+	"github.com/nanjj/cub/sdo"
 	"go.uber.org/zap"
 	"nanomsg.org/go/mangos/protocol/pull"
 	"nanomsg.org/go/mangos/protocol/push"
@@ -39,7 +39,7 @@ func (n *Node) Close() (err error) {
 	return Kill(n.pusher, n.puller)
 }
 
-func (n *Node) Send(ctx context.Context, e *Event) (err error) {
+func (n *Node) Send(ctx context.Context, e *sdo.DataGraph) (err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Send")
 	defer sp.Finish()
 	n.pusherf.Do(func() {
@@ -69,9 +69,10 @@ func (n *Node) Send(ctx context.Context, e *Event) (err error) {
 		e.Carrier = map[string]string{}
 	}
 	logs.Inject(tracer, sp.Context(), e.Carrier)
-	out := make([]byte, 0, 1024)
-	enc := codec.NewEncoderBytes(&out, msgpack)
-	if err = enc.Encode(e); err != nil {
+	// out := make([]byte, 0, 1024)
+	// enc := codec.NewEncoderBytes(&out, msgpack)
+	var out []byte
+	if out, err = e.Bytes(); err != nil {
 		sp.Error("Failed to encode", zap.Stack("stack"), zap.Error(err))
 		err = ErrorEncode
 		return
@@ -84,7 +85,7 @@ func (n *Node) Send(ctx context.Context, e *Event) (err error) {
 	return
 }
 
-func (n *Node) Recv(ctx context.Context, e *Event) (err error) {
+func (n *Node) Recv(ctx context.Context, e *sdo.DataGraph) (err error) {
 	sp, ctx := logs.StartSpanFromContext(ctx, "Recv")
 	defer sp.Finish()
 	n.pullerf.Do(func() {
@@ -111,8 +112,7 @@ func (n *Node) Recv(ctx context.Context, e *Event) (err error) {
 		sp.Error("Failed to receive", zap.Stack("stack"), zap.Error(err))
 		return
 	}
-	dec := codec.NewDecoderBytes(in, msgpack)
-	if err = dec.Decode(e); err != nil {
+	if err = e.Load(in); err != nil {
 		sp.Error("Failed to decode", zap.Stack("stack"), zap.Error(err))
 		return
 	}
@@ -120,26 +120,29 @@ func (n *Node) Recv(ctx context.Context, e *Event) (err error) {
 }
 
 func (n *Node) Exit(ctx context.Context) (err error) {
-	err = n.Send(ctx, &Event{Action: EXIT})
+	err = n.Send(ctx, &sdo.DataGraph{Summary: sdo.Summary{Action: EXIT}})
 	return
 }
 
 func (n *Node) Login(ctx context.Context, name, listen string) (err error) {
 	err = n.Send(ctx,
-		&Event{
-			Action: "login",
-			Payload: Payload{
-				DataObject(name),
-				DataObject(listen)},
-			From: name})
+		&sdo.DataGraph{
+			Summary: sdo.Summary{
+				Action: "login",
+				From:   name},
+			Payload: sdo.Payload{
+				sdo.DataObject(name),
+				sdo.DataObject(listen)}})
 	return
 }
 
 func (n *Node) Logout(ctx context.Context, name string) (err error) {
-	err = n.Send(ctx, &Event{
-		Action:  "logout",
-		Payload: Payload{DataObject(name)},
-		From:    name,
+	err = n.Send(ctx, &sdo.DataGraph{
+		Summary: sdo.Summary{
+			Action: "logout",
+			From:   name,
+		},
+		Payload: sdo.Payload{sdo.DataObject(name)},
 	})
 	return
 }

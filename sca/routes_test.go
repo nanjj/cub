@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/nanjj/cub/sca"
+	"github.com/nanjj/cub/sdo"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -52,23 +53,23 @@ func TestRoutesDispatch(t *testing.T) {
 	tcs := []struct {
 		name    string
 		data    map[string]string
-		targets sca.Targets
+		targets sdo.Targets
 		local   bool
-		ups     sca.Targets
-		vias    map[string]sca.Targets
+		ups     sdo.Targets
+		vias    map[string]sdo.Targets
 	}{
 		{"me", nil, nil, true, nil, nil},
 		{"me", nil, []string{"me"}, true, nil, nil},
 		{"me", map[string]string{}, []string{}, true, nil, nil},
-		{"me", map[string]string{"a": "b"}, []string{}, true, nil, map[string]sca.Targets{"b": []string{}}},
+		{"me", map[string]string{"a": "b"}, []string{}, true, nil, map[string]sdo.Targets{"b": []string{}}},
 		{"me", map[string]string{"a": "b"}, []string{""}, false, []string{""}, nil},
-		{"me", map[string]string{"a": "b"}, []string{"", "me", "a"}, true, []string{""}, map[string]sca.Targets{"b": []string{"a"}}},
-		{"me", map[string]string{"a": "b", "c": "d"}, []string{}, true, nil, map[string]sca.Targets{"b": []string{}, "d": []string{}}},
-		{"me", map[string]string{"a": "b"}, []string{"a"}, false, nil, map[string]sca.Targets{"b": []string{"a"}}},
-		{"me", map[string]string{"a": "b"}, []string{"a", "me"}, true, nil, map[string]sca.Targets{"b": []string{"a"}}},
-		{"me", map[string]string{"a": "b", "c": "d"}, []string{"a", "c"}, false, nil, map[string]sca.Targets{"b": []string{"a"}, "d": []string{"c"}}},
-		{"me", map[string]string{"a": "b", "c": "b"}, []string{"a", "c"}, false, nil, map[string]sca.Targets{"b": []string{"a", "c"}}},
-		{"me", map[string]string{"a": "b", "c": "b"}, []string{"a", "c", "e"}, false, []string{"e"}, map[string]sca.Targets{"b": {"a", "c"}}},
+		{"me", map[string]string{"a": "b"}, []string{"", "me", "a"}, true, []string{""}, map[string]sdo.Targets{"b": []string{"a"}}},
+		{"me", map[string]string{"a": "b", "c": "d"}, []string{}, true, nil, map[string]sdo.Targets{"b": []string{}, "d": []string{}}},
+		{"me", map[string]string{"a": "b"}, []string{"a"}, false, nil, map[string]sdo.Targets{"b": []string{"a"}}},
+		{"me", map[string]string{"a": "b"}, []string{"a", "me"}, true, nil, map[string]sdo.Targets{"b": []string{"a"}}},
+		{"me", map[string]string{"a": "b", "c": "d"}, []string{"a", "c"}, false, nil, map[string]sdo.Targets{"b": []string{"a"}, "d": []string{"c"}}},
+		{"me", map[string]string{"a": "b", "c": "b"}, []string{"a", "c"}, false, nil, map[string]sdo.Targets{"b": []string{"a", "c"}}},
+		{"me", map[string]string{"a": "b", "c": "b"}, []string{"a", "c", "e"}, false, []string{"e"}, map[string]sdo.Targets{"b": {"a", "c"}}},
 	}
 
 	for _, tc := range tcs {
@@ -79,7 +80,7 @@ func TestRoutesDispatch(t *testing.T) {
 				r.AddMember(v, nil)
 			}
 			if tc.vias == nil {
-				tc.vias = map[string]sca.Targets{}
+				tc.vias = map[string]sdo.Targets{}
 			}
 			targets := tc.targets
 			local, ups, vias := r.Dispatch(targets)

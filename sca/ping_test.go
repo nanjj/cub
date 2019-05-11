@@ -7,6 +7,7 @@ import (
 
 	"github.com/nanjj/cub/logs"
 	"github.com/nanjj/cub/sca"
+	"github.com/nanjj/cub/sdo"
 )
 
 func TestRunnerPingSelf(t *testing.T) {
@@ -22,7 +23,7 @@ func TestRunnerPingSelf(t *testing.T) {
 	r11 := rr(11, 0)
 	defer r11.Close()
 	ctx := context.Background()
-	req := sca.Payload{}
+	req := sdo.Payload{}
 	// ping inside
 	startTime := time.Now().UTC()
 	rep, err := r11.Ping(ctx, req)
@@ -43,17 +44,18 @@ func TestRunnerPingSelf(t *testing.T) {
 	}
 	t.Log(endTime.Sub(startTime))
 	// ping outside
-	results := make(chan sca.Payload, 1024)
-	r11.AddAction("pong", func(ctx context.Context, req sca.Payload) (rep sca.Payload, err error) {
+	results := make(chan sdo.Payload, 1024)
+	r11.AddAction("pong", func(ctx context.Context, req sdo.Payload) (rep sdo.Payload, err error) {
 		sp, ctx := logs.StartSpanFromContext(ctx, "Pong")
 		defer sp.Finish()
 		results <- req
 		return
 	})
 	startTime = time.Now().UTC()
-	if err = r11.Self().Send(ctx, &sca.Event{
-		Action:   "ping",
-		Callback: "pong",
+	if err = r11.Self().Send(ctx, &sdo.DataGraph{
+		Summary: sdo.Summary{
+			Action:   "ping",
+			Callback: "pong"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -106,9 +108,9 @@ func TestRunnerPingTree(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	results := make(chan sca.Payload, 1024)
+	results := make(chan sdo.Payload, 1024)
 	pongCb := func(ctx context.Context,
-		req sca.Payload) (rep sca.Payload, err error) {
+		req sdo.Payload) (rep sdo.Payload, err error) {
 		sp, ctx := logs.StartSpanFromContext(ctx, "Pong")
 		defer sp.Finish()
 		results <- req
@@ -116,11 +118,13 @@ func TestRunnerPingTree(t *testing.T) {
 	}
 	pong := r11.AddCallback(pongCb)
 	// Now ping r31 from r11
-	if err := r11.Self().Send(context.Background(), &sca.Event{
-		Action:   "ping",
-		To:       sca.Targets{n(31)},
-		From:     n(11),
-		Callback: pong,
+	if err := r11.Self().Send(context.Background(), &sdo.DataGraph{
+		Summary: sdo.Summary{
+			Action:   "ping",
+			To:       sdo.Targets{n(31)},
+			From:     n(11),
+			Callback: pong,
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -128,11 +132,13 @@ func TestRunnerPingTree(t *testing.T) {
 	if len(rep) != 2 {
 		t.Fatal(rep)
 	}
-	if err := r32.Self().Send(context.Background(), &sca.Event{
-		Action:   "ping",
-		To:       sca.Targets{n(31)},
-		From:     n(32),
-		Callback: r32.AddCallback(pongCb),
+	if err := r32.Self().Send(context.Background(), &sdo.DataGraph{
+		Summary: sdo.Summary{
+			Action:   "ping",
+			To:       sdo.Targets{n(31)},
+			From:     n(32),
+			Callback: r32.AddCallback(pongCb),
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +147,12 @@ func TestRunnerPingTree(t *testing.T) {
 		t.Fatal(rep)
 	}
 	// Now ping r31 and r32 from r22
-	if err := r22.Self().Send(context.Background(), &sca.Event{
-		Action:   "ping",
-		To:       sca.Targets{n(31), n(32)},
-		From:     n(22),
-		Callback: r22.AddCallback(pongCb),
+	if err := r22.Self().Send(context.Background(), &sdo.DataGraph{
+		Summary: sdo.Summary{Action: "ping",
+			To:       sdo.Targets{n(31), n(32)},
+			From:     n(22),
+			Callback: r22.AddCallback(pongCb),
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}

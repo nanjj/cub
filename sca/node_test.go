@@ -7,6 +7,7 @@ import (
 
 	retry "github.com/avast/retry-go"
 	"github.com/nanjj/cub/sca"
+	"github.com/nanjj/cub/sdo"
 	"golang.org/x/sync/errgroup"
 	"nanomsg.org/go/mangos"
 )
@@ -22,7 +23,7 @@ func TestNodeRecv(t *testing.T) {
 	defer n1.Close()
 	n2 := sca.Node{Name: "node2", Listen: listen}
 	defer n2.Close()
-	e := &sca.Event{}
+	e := &sdo.DataGraph{}
 	ctx := context.Background()
 	g.Go(func() (err error) {
 		if err = n1.Recv(ctx, e); err != mangos.ErrClosed {
@@ -41,7 +42,7 @@ func TestNodeSend(t *testing.T) {
 	n1 := sca.Node{Name: "node1", Listen: listen}
 	defer n1.Close()
 	ctx := context.Background()
-	e := &sca.Event{} // die event
+	e := &sdo.DataGraph{} // die event
 	if err := n1.Send(ctx, e); err != sca.ErrorDial {
 		t.Fatal(err)
 	}

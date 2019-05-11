@@ -7,9 +7,11 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/nanjj/cub/sdo"
 )
 
-type Action func(context.Context, Payload) (Payload, error)
+type Action func(context.Context, sdo.Payload) (sdo.Payload, error)
 type Actions struct{ sync.Map }
 
 func init() {
